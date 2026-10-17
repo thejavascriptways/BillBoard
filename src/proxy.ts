@@ -1,13 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { verifySession } from "@/lib/auth";
-import { safeNextPath } from "@/lib/paths";
+import { isPublicAsset, safeNextPath } from "@/lib/paths";
 import { SESSION_COOKIE } from "@/lib/constants";
 
 const PUBLIC_PATHS = new Set(["/login", "/api/v1/auth/login", "/api/v1/auth/session"]);
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  if (pathname.startsWith("/_next/") || isPublicAsset(pathname)) return NextResponse.next();
+
   const authenticated = verifySession(
     request.cookies.get(SESSION_COOKIE)?.value,
     process.env.AUTH_SECRET,
@@ -37,6 +39,8 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|.*\\.png$).*)",
+    // `_next/` includes the dev HMR socket. Gating that socket sends the login
+    // page a redirect instead of a WebSocket upgrade, so the form never hydrates.
+    "/((?!_next/|favicon.ico|sw.js|manifest.webmanifest|brand/|.*\\.(?:png|svg|ico|webp|jpg|jpeg)$).*)",
   ],
 };

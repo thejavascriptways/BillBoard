@@ -1,7 +1,6 @@
 "use client";
 
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { ChoiceSelect } from "@/components/choice-select";
@@ -49,7 +48,6 @@ const NOUN: Record<Kind, string> = {
 };
 
 export function SettingsPanel() {
-  const router = useRouter();
   const [properties, setProperties] = useState<PropertyDTO[]>([]);
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodDTO[]>([]);
@@ -294,9 +292,15 @@ export function SettingsPanel() {
   }
 
   async function signOut() {
-    await api("/api/v1/auth/logout", { method: "POST" });
-    router.push("/login");
-    router.refresh();
+    try {
+      await api("/api/v1/auth/logout", { method: "POST" });
+    } catch {
+      // A 401 already sends the browser to the login page.
+    }
+    // Full load so the proxy sees the cleared cookie. A client navigation can
+    // keep the old session and bounce straight back into the app.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- full load so the cleared cookie is visible to the proxy
+    window.location.assign("/login");
   }
 
   const editing = editor?.mode === "create" || editor?.mode === "edit";

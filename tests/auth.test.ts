@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { passwordsMatch, signSession, verifySession } from "@/lib/auth";
-import { safeNextPath } from "@/lib/paths";
+import { isPublicAsset, safeNextPath } from "@/lib/paths";
 
 describe("session cookie", () => {
   const secret = "dev-only-billboard-secret-change-me";
@@ -21,5 +21,12 @@ describe("session cookie", () => {
     expect(safeNextPath("/expenses/new")).toBe("/expenses/new");
     expect(safeNextPath("https://evil.example")).toBe("/");
     expect(safeNextPath("//evil.example")).toBe("/");
+  });
+
+  it("lets the logo load before anyone is signed in", () => {
+    expect(isPublicAsset("/brand/billboard-logo.svg")).toBe(true);
+    expect(isPublicAsset("/icon-192.png")).toBe(true);
+    expect(isPublicAsset("/settings")).toBe(false);
+    expect(isPublicAsset("/api/v1/expenses")).toBe(false);
   });
 });

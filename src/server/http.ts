@@ -55,16 +55,28 @@ export function assertSession(request: NextRequest): void {
   }
 }
 
+function sessionCookieOptions(maxAge: number) {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge,
+  };
+}
+
 export function sessionCookie(token: string) {
   return {
     name: SESSION_COOKIE,
     value: token,
-    options: {
-      httpOnly: true,
-      sameSite: "lax" as const,
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      maxAge: SESSION_MAX_AGE_SECONDS,
-    },
+    options: sessionCookieOptions(SESSION_MAX_AGE_SECONDS),
+  };
+}
+
+export function clearedSessionCookie() {
+  return {
+    name: SESSION_COOKIE,
+    value: "",
+    options: sessionCookieOptions(0),
   };
 }
