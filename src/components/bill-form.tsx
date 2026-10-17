@@ -49,6 +49,8 @@ export function BillForm({ billId }: { billId?: string }) {
   const [personId, setPersonId] = useState("");
   const [people, setPeople] = useState<{ id: string; name: string }[]>([]);
   const [muted, setMuted] = useState(false);
+  const [coveredByBillId, setCoveredByBillId] = useState("");
+  const [otherBills, setOtherBills] = useState<{ id: string; name: string }[]>([]);
   const [lastBusiness, setLastBusiness] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -69,6 +71,9 @@ export function BillForm({ billId }: { billId?: string }) {
         setMethods(methodData.paymentMethods.filter((item) => !item.archived));
         setPayees(payeeData.payees.filter((item) => !item.archived));
         setPeople(peopleData.people);
+        api<{ bills: { id: string; name: string }[] }>("/api/v1/bills")
+          .then((data) => setOtherBills(data.bills))
+          .catch(() => setOtherBills([]));
         setPropertyId((current) => current || openProperties[0]?.id || "");
         setCategoryId((current) => current || openCategories[0]?.id || "");
       })
@@ -103,6 +108,7 @@ export function BillForm({ billId }: { billId?: string }) {
         setDueOnNote(bill.dueOnNote ?? "");
         setPersonId(bill.personId ?? "");
         setMuted(bill.muted);
+        setCoveredByBillId(bill.coveredByBillId ?? "");
         setLastBusiness(bill.dayOfMonth === -2);
       })
       .catch((caught: unknown) => setError(caught instanceof ApiError ? caught.message : "Could not load the bill."));
@@ -133,6 +139,7 @@ export function BillForm({ billId }: { billId?: string }) {
       dueOnNote,
       dueRuleKind: lastBusiness ? "last_business_day" : lastDay ? "last_day" : frequency === "monthly" ? "day_of_month" : "schedule",
       personId: personId || null,
+      coveredByBillId: paymentMode === "covered" ? coveredByBillId || null : null,
       muted,
       endDate: endDate || null,
       endCount: endCount ? Number(endCount) : null,
@@ -299,6 +306,16 @@ export function BillForm({ billId }: { billId?: string }) {
           </select>
         </Field>
       </div>
+      {paymentMode === "covered" ? (
+        <Field label="Included in" id="bill-covered">
+          <select id="bill-covered" className={selectClass} value={coveredByBillId} onChange={(event) => setCoveredByBillId(event.target.value)}>
+            <option value="">Choose the covering bill</option>
+            {otherBills.filter((bill) => bill.id !== billId).map((bill) => (
+              <option key={bill.id} value={bill.id}>{bill.name}</option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
       <Field label="Due on note" id="bill-due-on">
         <Input id="bill-due-on" value={dueOnNote} onChange={(event) => setDueOnNote(event.target.value)} placeholder="6th of every month (auto paid)" className="h-12! text-base" />
       </Field>
