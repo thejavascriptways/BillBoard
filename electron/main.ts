@@ -732,7 +732,7 @@ async function runSmoke(): Promise<void> {
   while (Date.now() < deadline) {
     found = Boolean(
       await win.webContents.executeJavaScript(
-        "document.body && document.body.innerText.includes('Due dates')",
+        "document.body && document.body.innerText.includes('This month')",
       ),
     );
     if (found) break;
@@ -748,7 +748,7 @@ async function runSmoke(): Promise<void> {
   }
   if (process.env.BILLBOARD_SHOTS === "1") {
     const shots = [
-      ["/", "screenshot_dashboard.png", "Due dates"],
+      ["/", "screenshot_dashboard.png", "This month"],
       ["/calendar", "screenshot_calendar.png", "Calendar"],
       ["/bills/new", "screenshot_bill_form.png", "Quick add"],
       ["/cards", "screenshot_cards.png", "Credit cards"],

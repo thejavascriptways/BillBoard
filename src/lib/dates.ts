@@ -103,8 +103,17 @@ export function addMonths(iso: string, delta: number, dayOfMonth: number | null 
   const nextYear = shifted.getUTCFullYear();
   const nextMonth = shifted.getUTCMonth() + 1;
   const last = lastDayOfMonth(nextYear, nextMonth);
-  const wanted = dayOfMonth === -1 ? last : (dayOfMonth ?? day);
+  const wanted = dayOfMonth === -1 || dayOfMonth === -2 ? last : (dayOfMonth ?? day);
   const clamped = Math.min(Math.max(wanted, 1), last);
+  if (dayOfMonth === -2) {
+    let cursor = clamped;
+    let iso = `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(cursor).padStart(2, "0")}`;
+    while (weekdayUtc(iso) === 0 || weekdayUtc(iso) === 6) {
+      cursor -= 1;
+      iso = `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(cursor).padStart(2, "0")}`;
+    }
+    return iso;
+  }
   return `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(clamped).padStart(2, "0")}`;
 }
 

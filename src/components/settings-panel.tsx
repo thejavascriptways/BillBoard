@@ -65,6 +65,8 @@ export function SettingsPanel() {
   const [roleStartsOn, setRoleStartsOn] = useState("");
   const [roleBecomes, setRoleBecomes] = useState("");
   const [last4, setLast4] = useState("");
+  const [color, setColor] = useState("#534C66");
+  const [parentId, setParentId] = useState("");
   const [reassignTo, setReassignTo] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -122,6 +124,8 @@ export function SettingsPanel() {
     setRoleStartsOn("");
     setRoleBecomes("");
     setLast4("");
+    setColor("#534C66");
+    setParentId("");
     setReassignTo("");
     setError(null);
   }
@@ -147,6 +151,8 @@ export function SettingsPanel() {
   function openCategory(category: CategoryDTO) {
     resetFields();
     setName(category.name);
+    setColor(category.color || "#534C66");
+    setParentId(category.parentId ?? "");
     setEditor({ kind: "category", mode: "edit", item: category });
   }
 
@@ -252,12 +258,12 @@ export function SettingsPanel() {
           });
           setStatus("Property updated.");
         } else if (editor.kind === "category" && editor.mode === "create") {
-          await api("/api/v1/categories", { method: "POST", body: JSON.stringify({ name }) });
+          await api("/api/v1/categories", { method: "POST", body: JSON.stringify({ name, color, parentId: parentId || null }) });
           setStatus("Category added.");
         } else if (editor.kind === "category" && editor.mode === "edit") {
           await api(`/api/v1/categories/${editor.item.id}`, {
             method: "PATCH",
-            body: JSON.stringify({ name }),
+            body: JSON.stringify({ name, color, parentId: parentId || null }),
           });
           setStatus("Category updated.");
         } else if (editor.kind === "payment" && editor.mode === "create") {
@@ -518,6 +524,27 @@ export function SettingsPanel() {
                   />
                 </div>
               </>
+            ) : null}
+            {editor?.kind === "category" ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="editor-color">Color</Label>
+                  <Input id="editor-color" type="color" value={color} onChange={(event) => setColor(event.target.value)} className="h-12!" />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="editor-parent">Group</Label>
+                  <select id="editor-parent" value={parentId} onChange={(event) => setParentId(event.target.value)} className="h-12 rounded-lg border border-border bg-background px-3 text-base">
+                    <option value="">Top-level group</option>
+                    {categories
+                      .filter((category) => category.id !== (editor.mode === "edit" ? editor.item.id : ""))
+                      .map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
             ) : null}
             {editor?.kind === "payment" ? (
               <div className="grid gap-1.5">

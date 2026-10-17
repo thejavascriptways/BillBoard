@@ -7,6 +7,11 @@ import { getHousehold } from "@/server/services/household";
 
 const SHIFTS = ["none", "earlier", "later"] as const;
 
+function clampMinutes(value: number | undefined, fallback: number): number {
+  if (value == null || Number.isNaN(value)) return fallback;
+  return Math.min(24 * 60 - 1, Math.max(0, Math.trunc(value)));
+}
+
 export async function getPrefs() {
   const household = await getHousehold();
   return prisma.householdPrefs.upsert({
@@ -26,6 +31,8 @@ export function toPrefsDTO(prefs: {
   retention: number;
   shiftWeekends: WeekendShift;
   lastBackupOn: Date | null;
+  quietStart: number;
+  quietEnd: number;
 }): ReminderPrefsDTO {
   return {
     reminderDays: prefs.reminderDays,
@@ -37,6 +44,8 @@ export function toPrefsDTO(prefs: {
     retention: prefs.retention,
     shiftWeekends: prefs.shiftWeekends,
     lastBackupOn: prefs.lastBackupOn ? formatIsoDate(prefs.lastBackupOn) : null,
+    quietStart: prefs.quietStart,
+    quietEnd: prefs.quietEnd,
   };
 }
 
@@ -74,6 +83,8 @@ export async function updatePrefs(input: Partial<ReminderPrefsDTO>): Promise<Rem
       retention,
       shiftWeekends: shift,
       lastBackupOn,
+      quietStart: clampMinutes(input.quietStart, current.quietStart),
+      quietEnd: clampMinutes(input.quietEnd, current.quietEnd),
     },
   });
   return toPrefsDTO(saved);

@@ -119,7 +119,7 @@ export function HouseholdSettings() {
       <section id="reminders" className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
         <h2 className="font-medium">Reminders</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Defaults are 3 days before, 1 day before, and the due day. The Mac app notifies you even when the window is closed.
+          Defaults are 7, 3, and 1 days before, plus the due day. Quiet hours hold notifications. The Mac app still checks while the window is closed.
         </p>
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           {[7, 3, 1, 0].map((day) => (
@@ -154,10 +154,22 @@ export function HouseholdSettings() {
             <Input id="due-soon" inputMode="numeric" value={String(prefs.dueSoonDays)} onChange={(event) => setPrefs({ ...prefs, dueSoonDays: Number(event.target.value) })} className="h-12!" />
           </div>
         </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-1.5">
+            <Label htmlFor="quiet-start">Quiet hours start (minutes from midnight)</Label>
+            <Input id="quiet-start" inputMode="numeric" value={String(prefs.quietStart)} onChange={(event) => setPrefs({ ...prefs, quietStart: Number(event.target.value) })} className="h-12!" />
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="quiet-end">Quiet hours end</Label>
+            <Input id="quiet-end" inputMode="numeric" value={String(prefs.quietEnd)} onChange={(event) => setPrefs({ ...prefs, quietEnd: Number(event.target.value) })} className="h-12!" />
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">1320 is 10:00 PM and 420 is 7:00 AM. Overdue reminders resume after quiet hours, including after sleep.</p>
         <Button type="button" className="mt-3 h-11!" onClick={() => void savePrefs()}>
           Save reminders
         </Button>
       </section>
+      <PeopleSection />
       <section id="backup" className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
         <h2 className="font-medium">Backup</h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -263,6 +275,9 @@ export function HouseholdSettings() {
           <a className="text-primary hover:underline" href="/api/v1/exports/ledger?kind=cards">
             Export cards
           </a>
+          <a className="text-primary hover:underline" href={`/api/v1/exports/year?year=${new Date().getFullYear()}`}>
+            Export year matrix
+          </a>
         </div>
         <div className="mt-3 grid gap-2">
           <Label htmlFor="csv-import">Import bills</Label>
@@ -295,5 +310,45 @@ export function HouseholdSettings() {
         </div>
       </section>
     </div>
+  );
+}
+
+function PeopleSection() {
+  const [people, setPeople] = useState<{ id: string; name: string }[]>([]);
+  const [name, setName] = useState("");
+
+  function load() {
+    api<{ people: { id: string; name: string }[] }>("/api/v1/people")
+      .then((data) => setPeople(data.people))
+      .catch(() => setPeople([]));
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  return (
+    <section className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
+      <h2 className="font-medium">People</h2>
+      <p className="mt-1 text-sm text-muted-foreground">Cardholders and medical bills use this shared list. There are no separate profiles.</p>
+      <ul className="mt-3 grid gap-1 text-sm">
+        {people.map((person) => (
+          <li key={person.id}>{person.name}</li>
+        ))}
+      </ul>
+      <form
+        className="mt-3 flex gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void api("/api/v1/people", { method: "POST", body: JSON.stringify({ name }) }).then(() => {
+            setName("");
+            load();
+          });
+        }}
+      >
+        <Input aria-label="Person name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Name" className="h-11!" />
+        <Button type="submit" variant="outline">Add</Button>
+      </form>
+    </section>
   );
 }

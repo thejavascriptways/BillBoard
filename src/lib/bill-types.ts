@@ -95,6 +95,14 @@ export type BillDTO = {
   shiftWeekends: WeekendShift;
   reminderDays: number[];
   graceDays: number;
+  paymentMode: "auto" | "manual" | "check" | "paycheck" | "covered";
+  coveredByBillId: string | null;
+  dueOnNote: string | null;
+  dueRuleKind: string;
+  sessionEveryN: number | null;
+  sessionCount: number;
+  personId: string | null;
+  muted: boolean;
   archived: boolean;
   nextDue: string | null;
 };
@@ -114,6 +122,12 @@ export type CardDTO = {
   minimumPayment: string;
   apr: string | null;
   autopay: boolean;
+  cardholderId: string | null;
+  cardholderName: string | null;
+  statementAmount: string | null;
+  amountPaid: string | null;
+  paidBelowStatement: boolean;
+  balanceCarried: boolean;
   archived: boolean;
   nextStatement: string;
   nextDue: string;
@@ -141,4 +155,6 @@ export type ReminderPrefsDTO = {
   retention: number;
   shiftWeekends: WeekendShift;
   lastBackupOn: string | null;
+  quietStart: number;
+  quietEnd: number;
 };

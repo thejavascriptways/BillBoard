@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
-import { DueBoard } from "@/components/due-board";
+import { MonthChecklist } from "@/components/month-checklist";
 
-export const metadata: Metadata = { title: "Due dates" };
+export const metadata: Metadata = { title: "This month" };
 
 export default function HomePage() {
-  return <DueBoard />;
+  return <MonthChecklist />;
 }

@@ -251,6 +251,9 @@ Step 1 is the Mac shell. Steps 2–11 are the due-date MVP:
 - Reminders default to 3 days before, 1 day before, and the due day. The menu-bar app checks every few minutes and on wake, shows a macOS notification (Mark paid and Snooze 1 day where the system allows it), and badges the overdue count. A daily summary defaults to 8:00 AM. SMS stays off.
 - Settings exports an AES-256-GCM backup (password, scrypt) and restores it by merge or replace. CSV export covers bills, payments, and cards. CSV import previews the column mapping.
 - Plugins register on an internal event bus. The sample JSON bills importer lives in `plugins/sample-json-bills` and can be turned off in Settings.
+- This month is a checklist, not a spreadsheet. Each bill has one amount, paid date, and status per month. Statuses include done, not done, failed, not applicable, included in another bill, skipped, and pending confirmation. $0.00 is kept separate from a blank cell. N/A and included rows are left out of totals and reminders. Payment modes are auto paid, manual, by check, paid in paycheck, and paid through another bill.
+- Default groups are Household, Insurance, Loans and overdrafts, Credit Cards, Kids' classes and fees, Medical, and Other. They have colors and can contain subgroups. People are a shared list used as cardholders and on medical bills.
+- Months roll forward on their own. Fixed bills keep their amount. Variable bills ask for the actual. Archived months are read-only. A year-matrix CSV is in Settings. Workbook (.xlsx) import is not in this version.
 
 Still later: loans, cash-flow forecasts, payoff planner, bank connections, SQLCipher, email/push/SMS delivery, and signed Mac builds.
 

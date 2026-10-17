@@ -82,7 +82,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <BillboardLogo className="size-9 rounded-[22%] ring-2 ring-white" />
                 <span className="font-display text-[1.7rem] leading-none tracking-tight">{APP_NAME}</span>
               </Link>
-              <p className="hidden text-sm md:block">Due dates</p>
+              <p className="hidden text-sm md:block">This month</p>
               <div className="ml-auto flex items-center gap-2">
                 <PropertySwitcher />
                 <Link

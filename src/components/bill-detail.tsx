@@ -27,6 +27,8 @@ export function BillDetail({ billId }: { billId: string }) {
   const [reschedule, setReschedule] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [timeline, setTimeline] = useState<{ yearMonth: string; amount: string | null; paidOn: string | null; status: string }[]>([]);
+  const [audit, setAudit] = useState<{ id: string; summary: string; createdAt: string }[]>([]);
 
   function load() {
     Promise.all([
@@ -34,13 +36,16 @@ export function BillDetail({ billId }: { billId: string }) {
       api<{ occurrences: OccurrenceDTO[] }>(`/api/v1/occurrences?from=2020-01-01&to=2035-12-31`),
       api<{ payments: PaymentDTO[] }>(`/api/v1/payments?billId=${billId}`),
       api<{ paymentMethods: PaymentMethodDTO[] }>("/api/v1/payment-methods"),
+      api<{ entries: { yearMonth: string; amount: string | null; paidOn: string | null; status: string }[]; audit: { id: string; summary: string; createdAt: string }[] }>(`/api/v1/months?billId=${billId}`),
     ])
-      .then(([billData, occurrenceData, paymentData, methodData]) => {
+      .then(([billData, occurrenceData, paymentData, methodData, monthData]) => {
         setBill(billData.bill);
         const mine = occurrenceData.occurrences.filter((row) => row.billId === billId);
         setOccurrences(mine);
         setPayments(paymentData.payments);
         setMethods(methodData.paymentMethods);
+        setTimeline(monthData.entries);
+        setAudit(monthData.audit);
         const open = mine.find((row) => row.status !== "paid" && row.status !== "skipped");
         if (open) {
           setTarget(open.id);
@@ -111,7 +116,8 @@ export function BillDetail({ billId }: { billId: string }) {
           <h1 className="font-display text-4xl tracking-tight">{bill.name}</h1>
           <p className="mt-1 text-muted-foreground">
             {bill.payeeName} · {bill.categoryName} · {formatMoney(bill.amount)} {bill.amountKind} · {bill.frequency}
-            {bill.autopay ? " · Autopay" : ""}
+            {bill.autopay ? " · Autopay" : ""} · {bill.paymentMode.replaceAll("_", " ")}
+            {bill.dueOnNote ? ` · ${bill.dueOnNote}` : ""}
           </p>
         </div>
         <div className="flex gap-2">
@@ -129,6 +135,27 @@ export function BillDetail({ billId }: { billId: string }) {
           </Button>
         </div>
       </div>
+      <section className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
+        <h2 className="font-medium">Monthly timeline</h2>
+        <div className="mt-3 flex h-16 items-end gap-1">
+          {timeline.map((entry) => (
+            <div key={entry.yearMonth} className="flex-1 rounded-t bg-brand-indigo/80" style={{ height: `${Math.min(100, Number(entry.amount ?? 0) / 5)}%` }} title={`${entry.yearMonth} ${entry.amount ?? "blank"}`} />
+          ))}
+        </div>
+        <ul className="mt-3 grid gap-1 text-sm">
+          {timeline.map((entry) => (
+            <li key={entry.yearMonth} className="flex justify-between gap-3">
+              <span>{entry.yearMonth}</span>
+              <span>{entry.amount == null ? "Blank" : formatMoney(entry.amount)} · {entry.status.replaceAll("_", " ")}{entry.paidOn ? ` · ${entry.paidOn}` : ""}</span>
+            </li>
+          ))}
+        </ul>
+        {audit.length > 0 ? (
+          <ul className="mt-3 grid gap-1 text-xs text-muted-foreground">
+            {audit.map((entry) => <li key={entry.id}>{entry.summary}</li>)}
+          </ul>
+        ) : null}
+      </section>
       {message ? <p className="text-sm text-brand-indigo">{message}</p> : null}
       {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       <section className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">

@@ -16,6 +16,9 @@ export async function dispatchReminders(now = new Date()) {
   const desktop = channels.find((channel) => channel.id === "desktop");
   if (!desktop?.enabled) return { overdueCount: 0, notifications: [] };
 
+  const entries = await prisma.monthEntry.findMany({
+    where: { householdId: household.id, yearMonth: { gte: addDays(today, -60).slice(0, 7), lte: addDays(today, 31).slice(0, 7) } },
+  });
   const rows = await prisma.occurrence.findMany({
     where: {
       householdId: household.id,
@@ -36,16 +39,29 @@ export async function dispatchReminders(now = new Date()) {
       dueSoonDays: prefs.dueSoonDays,
       graceDays: row.bill.graceDays,
     });
+    const dueDate = formatIsoDate(row.dueDate);
+    const entry = entries.find((item) => item.billId === row.billId && item.yearMonth === dueDate.slice(0, 7));
+    const monthStatus = entry?.status;
     return {
       occurrenceId: row.id,
       billId: row.billId,
       billName: row.bill.name,
       propertyName: row.property.name,
-      dueDate: formatIsoDate(row.dueDate),
-      open: status !== "paid" && status !== "skipped",
+      dueDate,
+      open: status !== "paid" && status !== "skipped" && monthStatus !== "done",
       offsets: row.bill.reminderDays.length > 0 ? row.bill.reminderDays : prefs.reminderDays,
       snoozedUntil: row.snoozedUntil ? formatIsoDate(row.snoozedUntil) : null,
       sentKeys: row.reminders.map((reminder) => reminder.dedupeKey),
+      muted: row.bill.muted,
+      excluded:
+        row.bill.paymentMode === "covered" ||
+        row.bill.paymentMode === "paycheck" ||
+        monthStatus === "not_applicable" ||
+        monthStatus === "included" ||
+        monthStatus === "skipped",
+      variable: row.bill.amountKind !== "fixed",
+      amountBlank: entry ? entry.amount == null : row.bill.amountKind !== "fixed",
+      autopay: row.bill.paymentMode === "auto" || row.bill.autopay,
     };
   });
 
@@ -59,6 +75,11 @@ export async function dispatchReminders(now = new Date()) {
     digestMinute: prefs.digestMinute,
     digestSent,
     occurrences,
+    quietStart: prefs.quietStart,
+    quietEnd: prefs.quietEnd,
+    catchUpDays: 3,
+    monthStartSent: Boolean(await prisma.reminderDelivery.findUnique({ where: { dedupeKey: `month_start:${today}` } })),
+    monthEndSent: Boolean(await prisma.reminderDelivery.findUnique({ where: { dedupeKey: `month_end:${today}` } })),
   });
 
   const notifications = [];

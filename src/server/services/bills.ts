@@ -1,8 +1,10 @@
 import { Prisma, type Bill, type PaymentMethod } from "@prisma/client";
 
+import { parseDueOn, type DueRuleKind, type PaymentMode } from "@/core/due-on";
 import { events } from "@/core/events";
 import { FREQUENCIES, generateDueDates, type Frequency, type IntervalUnit, type WeekendShift } from "@/core/recurrence";
 import { occurrenceStatus } from "@/core/status";
+import { dateRejection } from "@/core/validation";
 import type {
   AmountKind,
   BillDTO,
@@ -39,7 +41,8 @@ function asCents(value: Prisma.Decimal | string): number {
 }
 
 function requireDate(field: string, value: string): Date {
-  if (!isIsoDate(value)) throw fieldError(field, "Use a real date.");
+  const rejected = dateRejection(value);
+  if (rejected) throw fieldError(field, rejected);
   return parseIsoDate(value);
 }
 
@@ -78,8 +81,37 @@ function cleanReminders(days: number[] | undefined): number[] {
 function cleanDay(value: number | null | undefined): number | null {
   if (value == null) return null;
   const day = Math.trunc(value);
-  if (day === -1 || (day >= 1 && day <= 31)) return day;
-  throw fieldError("dayOfMonth", "Use a day from 1 to 31, or the last day of the month.");
+  if (day === -1 || day === -2 || (day >= 1 && day <= 31)) return day;
+  throw fieldError("dayOfMonth", "Use a day from 1 to 31, the last day, or the last business day.");
+}
+
+const MODES = ["auto", "manual", "check", "paycheck", "covered"] as const;
+const RULES = [
+  "schedule",
+  "day_of_month",
+  "last_day",
+  "last_business_day",
+  "every_n_months",
+  "quarterly",
+  "semiannual",
+  "annual",
+  "fixed_range",
+  "usage",
+  "balance",
+  "on_demand",
+  "event",
+  "statement",
+] as const;
+const UNSCHEDULED = new Set(["usage", "balance", "on_demand", "event", "statement"]);
+
+function requireMode(value: string): PaymentMode {
+  if ((MODES as readonly string[]).includes(value)) return value as PaymentMode;
+  throw fieldError("paymentMode", "Choose a payment mode.");
+}
+
+function requireRule(value: string): DueRuleKind {
+  if ((RULES as readonly string[]).includes(value)) return value as DueRuleKind;
+  throw fieldError("dueRuleKind", "Choose a due-on rule.");
 }
 
 function portal(value: string | null | undefined): string | null {
@@ -124,6 +156,14 @@ export function toBillDTO(bill: BillGraph): BillDTO {
     shiftWeekends: bill.shiftWeekends,
     reminderDays: bill.reminderDays,
     graceDays: bill.graceDays,
+    paymentMode: bill.paymentMode,
+    coveredByBillId: bill.coveredByBillId,
+    dueOnNote: bill.dueOnNote,
+    dueRuleKind: bill.dueRuleKind,
+    sessionEveryN: bill.sessionEveryN,
+    sessionCount: bill.sessionCount,
+    personId: bill.personId,
+    muted: bill.muted,
     archived: bill.archivedAt != null,
     nextDue: open[0] ?? null,
   };
@@ -152,6 +192,10 @@ export async function materializeBill(billId: string, horizon: string): Promise<
     include: { occurrences: { include: { payments: true } } },
   });
   if (!bill) return;
+  if (UNSCHEDULED.has(bill.dueRuleKind)) {
+    await prisma.bill.update({ where: { id: bill.id }, data: { generatedThrough: parseIsoDate(horizon) } });
+    return;
+  }
   if (bill.generatedThrough && formatIsoDate(bill.generatedThrough) >= addDays(horizon, -100)) return;
   const cycles = generateDueDates(
     {
@@ -282,7 +326,31 @@ export type BillWrite = {
   shiftWeekends?: string;
   reminderDays?: number[];
   graceDays?: number;
+  paymentMode?: string | null;
+  coveredByBillId?: string | null;
+  dueOnNote?: string | null;
+  dueRuleKind?: string | null;
+  sessionEveryN?: number | null;
+  personId?: string | null;
+  muted?: boolean;
+  balanceThreshold?: string | number | null;
+  accountBalance?: string | number | null;
 };
+
+function ruleFields(input: BillWrite) {
+  const parsed = input.dueOnNote ? parseDueOn(input.dueOnNote) : null;
+  return {
+    frequency: requireFrequency(input.frequency ?? parsed?.frequency ?? "monthly"),
+    intervalN: Math.max(1, Math.trunc(input.interval ?? parsed?.interval ?? 1)),
+    intervalUnit: requireUnit(input.unit ?? parsed?.unit),
+    dayOfMonth: input.dayOfMonth !== undefined ? cleanDay(input.dayOfMonth) : cleanDay(parsed?.dayOfMonth),
+    paymentMode: requireMode(input.paymentMode ?? parsed?.paymentMode ?? (input.autopay ? "auto" : "manual")),
+    autopay: input.autopay ?? parsed?.autopay ?? false,
+    dueRuleKind: requireRule(input.dueRuleKind ?? parsed?.dueRuleKind ?? "schedule"),
+    sessionEveryN: input.sessionEveryN ?? parsed?.sessionEveryN ?? null,
+    dueOnNote: cleanOptional("dueOnNote", input.dueOnNote, 200),
+  };
+}
 
 function amountCents(input: string | number): number {
   const parsed = parseAmountInput(input);
@@ -312,23 +380,25 @@ export async function createBill(input: BillWrite): Promise<BillDTO> {
       amountKind: requireKind(input.amountKind ?? "fixed"),
       amount: new Prisma.Decimal(money(cents)),
       anchorDate: anchor,
-      autopay: Boolean(input.autopay),
       paymentMethodId: method?.id ?? null,
       notes: cleanOptional("notes", input.notes, 500),
       portalUrl: portal(input.portalUrl),
-      frequency: requireFrequency(input.frequency ?? "monthly"),
-      intervalN: Math.max(1, Math.trunc(input.interval ?? 1)),
-      intervalUnit: requireUnit(input.unit),
-      dayOfMonth: cleanDay(input.dayOfMonth),
+      ...ruleFields(input),
       endDate,
       endCount,
       shiftWeekends: requireShift(input.shiftWeekends),
       reminderDays: cleanReminders(input.reminderDays),
       graceDays: Math.min(60, Math.max(0, Math.trunc(input.graceDays ?? 0))),
+      coveredByBillId: input.coveredByBillId || null,
+      personId: input.personId || null,
+      muted: Boolean(input.muted),
     },
     include: billInclude,
   });
   await materializeBill(created.id, addDays(todayInChicago(), HORIZON_DAYS));
+  await prisma.auditLog.create({
+    data: { householdId: household.id, entityType: "bill", entityId: created.id, action: "created", summary: `Added ${name}.` },
+  });
   events.emit("bill.created", { billId: created.id, name: created.name });
   const fresh = await loadBill(created.id);
   return toBillDTO(fresh.bill);
@@ -353,19 +423,18 @@ export async function updateBill(id: string, input: BillWrite): Promise<BillDTO>
       amountKind: requireKind(input.amountKind ?? bill.amountKind),
       amount: new Prisma.Decimal(money(cents)),
       anchorDate: requireDate("anchorDate", input.anchorDate),
-      autopay: Boolean(input.autopay),
       paymentMethodId: method?.id ?? null,
       notes: cleanOptional("notes", input.notes, 500),
       portalUrl: portal(input.portalUrl),
-      frequency: requireFrequency(input.frequency ?? bill.frequency),
-      intervalN: Math.max(1, Math.trunc(input.interval ?? bill.intervalN)),
-      intervalUnit: requireUnit(input.unit ?? bill.intervalUnit),
-      dayOfMonth: cleanDay(input.dayOfMonth),
+      ...ruleFields({ ...input, frequency: input.frequency ?? bill.frequency, interval: input.interval ?? bill.intervalN, unit: input.unit ?? bill.intervalUnit }),
       endDate: optionalDate("endDate", input.endDate),
       endCount: input.endCount == null ? null : Math.trunc(input.endCount),
       shiftWeekends: requireShift(input.shiftWeekends),
       reminderDays: cleanReminders(input.reminderDays),
       graceDays: Math.min(60, Math.max(0, Math.trunc(input.graceDays ?? 0))),
+      coveredByBillId: input.coveredByBillId || null,
+      personId: input.personId || null,
+      muted: Boolean(input.muted),
       generatedThrough: null,
     },
   });
@@ -417,6 +486,13 @@ export async function duplicateBill(id: string): Promise<BillDTO> {
     shiftWeekends: bill.shiftWeekends,
     reminderDays: bill.reminderDays,
     graceDays: bill.graceDays,
+    paymentMode: bill.paymentMode,
+    coveredByBillId: bill.coveredByBillId,
+    dueOnNote: bill.dueOnNote,
+    dueRuleKind: bill.dueRuleKind,
+    sessionEveryN: bill.sessionEveryN,
+    personId: bill.personId,
+    muted: bill.muted,
   });
 }
 
@@ -573,6 +649,27 @@ export async function payOccurrence(
       paymentMethodId: method?.id ?? null,
       confirmationNumber: cleanOptional("confirmationNumber", input.confirmationNumber, 40),
       note: cleanOptional("note", input.note, 300),
+    },
+  });
+  const fullyPaid = cents >= toCents(presented.remaining);
+  if (fullyPaid) {
+    await prisma.monthEntry.updateMany({
+      where: { billId: row.billId, yearMonth: formatIsoDate(row.dueDate).slice(0, 7) },
+      data: {
+        status: "done",
+        paidOn,
+        amount: new Prisma.Decimal(money(cents)),
+        amountPaid: new Prisma.Decimal(money(cents)),
+      },
+    });
+  }
+  await prisma.auditLog.create({
+    data: {
+      householdId: household.id,
+      entityType: "payment",
+      entityId: payment.id,
+      action: "recorded",
+      summary: `Recorded ${money(cents)} for ${row.bill.name}.`,
     },
   });
   events.emit("payment.recorded", { paymentId: payment.id, billId: row.billId, amount: money(cents) });

@@ -5,6 +5,8 @@ import { addDays, todayInChicago } from "../src/lib/dates";
 import { prisma } from "../src/server/db";
 import { createBill, payOccurrence, queryOccurrences } from "../src/server/services/bills";
 import { createCard } from "../src/server/services/cards";
+import { ensureMonth } from "../src/server/services/months";
+import { createPerson } from "../src/server/services/people";
 import { seed } from "../prisma/seed";
 
 async function main() {
@@ -55,7 +57,21 @@ async function main() {
   const due = (await queryOccurrences({ q: "Demo Water", from: addDays(today, -40), to: today })).find((row) => row.billId === water.id);
   if (!due) throw new Error("Demo water occurrence missing.");
   await payOccurrence(due.id, { confirmationNumber: "DEMO-100", note: "Recorded for the screenshot." });
+  await createBill({
+    name: "Demo Home Insurance",
+    payeeName: "Demo Insurer",
+    propertyId: home.id,
+    categoryId: (await category("home-insurance")).id,
+    amount: "120.00",
+    amountKind: "fixed",
+    anchorDate: today,
+    frequency: "monthly",
+    paymentMode: "covered",
+    dueOnNote: "paid with the mortgage",
+  });
+  const person = await createPerson({ name: "Demo Deepak" });
   await createCard({
+    cardholderId: person.id,
     issuer: "Chase",
     nickname: "Demo Chase",
     last4: "4421",
@@ -68,6 +84,23 @@ async function main() {
     apr: "19.99",
     autopay: false,
   });
+  await ensureMonth(today.slice(0, 7));
+  const cardEntry = await prisma.monthEntry.findFirst({
+    where: { bill: { name: "Demo Chase payment" }, yearMonth: today.slice(0, 7) },
+  });
+  if (cardEntry) {
+    await prisma.monthEntry.update({
+      where: { id: cardEntry.id },
+      data: { statementAmount: "200.00", amount: "40.00", amountPaid: "40.00", status: "done", paidOn: new Date(`${today}T00:00:00.000Z`) },
+    });
+  }
+  const waterEntry = await prisma.monthEntry.findFirst({ where: { billId: water.id, yearMonth: today.slice(0, 7) } });
+  if (waterEntry) {
+    await prisma.monthEntry.update({
+      where: { id: waterEntry.id },
+      data: { status: "done", amount: "68.40", amountPaid: "68.40", paidOn: new Date(`${today}T00:00:00.000Z`) },
+    });
+  }
   writeFileSync("/tmp/billboard-shots.json", JSON.stringify({ billPath: `/bills/${water.id}` }));
   console.log(`/bills/${water.id}`);
 }

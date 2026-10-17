@@ -11,6 +11,8 @@ function toDTO(category: Category, expenseCount: number): CategoryDTO {
   return {
     id: category.id,
     name: category.name,
+    color: category.color,
+    parentId: category.parentId,
     sortOrder: category.sortOrder,
     archived: category.archivedAt != null,
     expenseCount,
@@ -45,7 +47,7 @@ async function requireCategory(id: string) {
   return { household, existing };
 }
 
-export async function createCategory(input: { name: string }): Promise<CategoryDTO> {
+export async function createCategory(input: { name: string; color?: string | null; parentId?: string | null }): Promise<CategoryDTO> {
   const household = await getHousehold();
   const name = cleanRequired("name", input.name, "category name", 60);
   const duplicate = await prisma.category.findFirst({
@@ -67,6 +69,8 @@ export async function createCategory(input: { name: string }): Promise<CategoryD
         return Boolean(found);
       }),
       sortOrder: (max._max.sortOrder ?? -1) + 1,
+      color: input.color || "#534C66",
+      parentId: input.parentId || null,
     },
   });
   return toDTO(created, 0);
@@ -74,7 +78,7 @@ export async function createCategory(input: { name: string }): Promise<CategoryD
 
 export async function updateCategory(
   id: string,
-  input: { name?: string; archived?: boolean },
+  input: { name?: string; archived?: boolean; color?: string | null; parentId?: string | null },
 ): Promise<CategoryDTO> {
   const { household, existing } = await requireCategory(id);
   const name = input.name === undefined ? existing.name : cleanRequired("name", input.name, "category name", 60);
@@ -89,7 +93,16 @@ export async function updateCategory(
   let archivedAt = existing.archivedAt;
   if (input.archived === true) archivedAt = existing.archivedAt ?? new Date();
   if (input.archived === false) archivedAt = null;
-  const updated = await prisma.category.update({ where: { id }, data: { name, archivedAt } });
+  if (input.parentId && input.parentId === id) throw new ServiceError("A category cannot be its own group.", 400, "invalid");
+  const updated = await prisma.category.update({
+    where: { id },
+    data: {
+      name,
+      archivedAt,
+      color: input.color === undefined ? existing.color : input.color || "#534C66",
+      parentId: input.parentId === undefined ? existing.parentId : input.parentId || null,
+    },
+  });
   const usage = await prisma.expense.count({ where: { categoryId: id } });
   return toDTO(updated, usage);
 }

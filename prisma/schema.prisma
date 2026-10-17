@@ -35,6 +35,9 @@ model Household {
   prefs              HouseholdPrefs?
   pluginStates       PluginState[]
   reminderDeliveries ReminderDelivery[]
+  monthEntries       MonthEntry[]
+  ledgerMonths       LedgerMonth[]
+  auditLogs          AuditLog[]
 }
 
 model Property {
@@ -74,6 +77,10 @@ model Category {
   household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
   slug        String
   name        String
+  color       String    @default("#534C66")
+  parentId    String?
+  parent      Category? @relation("CategoryGroup", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Category[] @relation("CategoryGroup")
   sortOrder   Int       @default(0)
   archivedAt  DateTime?
   createdAt   DateTime  @default(now())
@@ -147,6 +154,8 @@ model Person {
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
   splitShares PayerSplitShare[]
+  bills       Bill[]
+  creditCards CreditCard[]
 
   @@unique([householdId, name])
   @@index([householdId, sortOrder])
@@ -279,14 +288,32 @@ model Bill {
   reminderDays     Int[]         @default([])
   graceDays        Int           @default(0)
   generatedThrough DateTime?     @db.Date
+  /// Spreadsheet payment mode. Covered and paycheck rows are references.
+  paymentMode      PaymentMode   @default(manual)
+  coveredByBillId  String?
+  coveredBy        Bill?         @relation("CoveredBy", fields: [coveredByBillId], references: [id], onDelete: SetNull)
+  covers           Bill[]        @relation("CoveredBy")
+  /// Original free-text due-on rule, kept as a note.
+  dueOnNote        String?
+  dueRuleKind      DueRuleKind   @default(schedule)
+  sessionEveryN    Int?
+  sessionCount     Int           @default(0)
+  balanceThreshold Decimal?      @db.Decimal(12, 2)
+  accountBalance   Decimal?      @db.Decimal(12, 2)
+  personId         String?
+  person           Person?       @relation(fields: [personId], references: [id], onDelete: SetNull)
+  muted            Boolean       @default(false)
   archivedAt       DateTime?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
   occurrences      Occurrence[]
   payments         Payment[]
   creditCard       CreditCard?
+  monthEntries     MonthEntry[]
 
   @@index([householdId, archivedAt])
+  @@index([personId])
+  @@index([coveredByBillId])
   @@index([propertyId])
   @@index([payeeId])
   @@index([categoryId])
@@ -364,21 +391,75 @@ model CreditCard {
   minimumPayment   Decimal   @db.Decimal(12, 2)
   apr              Decimal?  @db.Decimal(6, 3)
   autopay          Boolean   @default(false)
+  cardholderId     String?
+  cardholder       Person?   @relation(fields: [cardholderId], references: [id], onDelete: SetNull)
   archivedAt       DateTime?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   @@index([householdId])
   @@index([propertyId])
+  @@index([cardholderId])
+}
+
+/// One amount, paid date, and status per bill per month. Null amount is blank. 0.00 is a real zero.
+model MonthEntry {
+  id               String      @id @default(cuid())
+  householdId      String
+  household        Household   @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  billId           String
+  bill             Bill        @relation(fields: [billId], references: [id], onDelete: Cascade)
+  /// YYYY-MM
+  yearMonth        String
+  amount           Decimal?    @db.Decimal(12, 2)
+  paidOn           DateTime?   @db.Date
+  status           MonthStatus @default(not_done)
+  dueDate          DateTime?   @db.Date
+  statementAmount  Decimal?    @db.Decimal(12, 2)
+  amountPaid       Decimal?    @db.Decimal(12, 2)
+  note             String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@unique([billId, yearMonth])
+  @@index([householdId, yearMonth])
+}
+
+/// A closed month is read-only in the checklist.
+model LedgerMonth {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  yearMonth   String
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([householdId, yearMonth])
+}
+
+model AuditLog {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  entityType  String
+  entityId    String
+  action      String
+  summary     String
+  createdAt   DateTime  @default(now())
+
+  @@index([householdId, entityType, entityId])
 }
 
 model HouseholdPrefs {
   householdId   String         @id
   household     Household      @relation(fields: [householdId], references: [id], onDelete: Cascade)
-  reminderDays  Int[]          @default([3, 1, 0])
+  reminderDays  Int[]          @default([7, 3, 1, 0])
   digestHour    Int            @default(8)
   digestMinute  Int            @default(0)
   dueSoonDays   Int            @default(7)
+  /// Minutes from midnight. Default quiet hours are 10:00 PM–7:00 AM.
+  quietStart    Int            @default(1320)
+  quietEnd      Int            @default(420)
   backupDir     String?
   autoBackup    Boolean        @default(true)
   retention     Int            @default(14)
@@ -452,6 +533,41 @@ enum WeekendShift {
   none
   earlier
   later
+}
+
+enum PaymentMode {
+  auto
+  manual
+  check
+  paycheck
+  covered
+}
+
+enum MonthStatus {
+  not_done
+  done
+  failed
+  not_applicable
+  included
+  skipped
+  pending
+}
+
+enum DueRuleKind {
+  schedule
+  day_of_month
+  last_day
+  last_business_day
+  every_n_months
+  quarterly
+  semiannual
+  annual
+  fixed_range
+  usage
+  balance
+  on_demand
+  event
+  statement
 }
 
 enum OccupancyUse {

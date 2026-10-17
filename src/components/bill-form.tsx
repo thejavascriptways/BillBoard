@@ -43,7 +43,13 @@ export function BillForm({ billId }: { billId?: string }) {
   const [paymentMethodId, setPaymentMethodId] = useState("");
   const [notes, setNotes] = useState("");
   const [portalUrl, setPortalUrl] = useState("");
-  const [reminders, setReminders] = useState<number[]>([3, 1, 0]);
+  const [reminders, setReminders] = useState<number[]>([7, 3, 1, 0]);
+  const [paymentMode, setPaymentMode] = useState("manual");
+  const [dueOnNote, setDueOnNote] = useState("");
+  const [personId, setPersonId] = useState("");
+  const [people, setPeople] = useState<{ id: string; name: string }[]>([]);
+  const [muted, setMuted] = useState(false);
+  const [lastBusiness, setLastBusiness] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -53,14 +59,16 @@ export function BillForm({ billId }: { billId?: string }) {
       api<{ categories: CategoryDTO[] }>("/api/v1/categories"),
       api<{ paymentMethods: PaymentMethodDTO[] }>("/api/v1/payment-methods"),
       api<{ payees: PayeeDTO[] }>("/api/v1/payees"),
+      api<{ people: { id: string; name: string }[] }>("/api/v1/people"),
     ])
-      .then(([propertyData, categoryData, methodData, payeeData]) => {
+      .then(([propertyData, categoryData, methodData, payeeData, peopleData]) => {
         const openProperties = propertyData.properties.filter((item) => !item.archived);
         const openCategories = categoryData.categories.filter((item) => !item.archived);
         setProperties(openProperties);
         setCategories(openCategories);
         setMethods(methodData.paymentMethods.filter((item) => !item.archived));
         setPayees(payeeData.payees.filter((item) => !item.archived));
+        setPeople(peopleData.people);
         setPropertyId((current) => current || openProperties[0]?.id || "");
         setCategoryId((current) => current || openCategories[0]?.id || "");
       })
@@ -91,6 +99,11 @@ export function BillForm({ billId }: { billId?: string }) {
         setNotes(bill.notes ?? "");
         setPortalUrl(bill.portalUrl ?? "");
         setReminders(bill.reminderDays);
+        setPaymentMode(bill.paymentMode);
+        setDueOnNote(bill.dueOnNote ?? "");
+        setPersonId(bill.personId ?? "");
+        setMuted(bill.muted);
+        setLastBusiness(bill.dayOfMonth === -2);
       })
       .catch((caught: unknown) => setError(caught instanceof ApiError ? caught.message : "Could not load the bill."));
   }, [billId]);
@@ -115,7 +128,12 @@ export function BillForm({ billId }: { billId?: string }) {
       frequency,
       interval: Number(interval || 1),
       unit,
-      dayOfMonth: lastDay ? -1 : dayOfMonth ? Number(dayOfMonth) : null,
+      dayOfMonth: lastBusiness ? -2 : lastDay ? -1 : dayOfMonth ? Number(dayOfMonth) : null,
+      paymentMode,
+      dueOnNote,
+      dueRuleKind: lastBusiness ? "last_business_day" : lastDay ? "last_day" : frequency === "monthly" ? "day_of_month" : "schedule",
+      personId: personId || null,
+      muted,
       endDate: endDate || null,
       endCount: endCount ? Number(endCount) : null,
       shiftWeekends,
@@ -256,8 +274,34 @@ export function BillForm({ billId }: { billId?: string }) {
             <input type="checkbox" checked={lastDay} onChange={(event) => setLastDay(event.target.checked)} />
             Last day of the month
           </label>
+          <label className="mt-7 flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={lastBusiness} onChange={(event) => setLastBusiness(event.target.checked)} />
+            Last business day
+          </label>
         </div>
       ) : null}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Payment mode" id="bill-mode">
+          <select id="bill-mode" className={selectClass} value={paymentMode} onChange={(event) => setPaymentMode(event.target.value)}>
+            <option value="manual">Manual</option>
+            <option value="auto">Auto paid</option>
+            <option value="check">By check</option>
+            <option value="paycheck">Paid in paycheck</option>
+            <option value="covered">Paid through another bill</option>
+          </select>
+        </Field>
+        <Field label="Person" id="bill-person">
+          <select id="bill-person" className={selectClass} value={personId} onChange={(event) => setPersonId(event.target.value)}>
+            <option value="">None</option>
+            {people.map((person) => (
+              <option key={person.id} value={person.id}>{person.name}</option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <Field label="Due on note" id="bill-due-on">
+        <Input id="bill-due-on" value={dueOnNote} onChange={(event) => setDueOnNote(event.target.value)} placeholder="6th of every month (auto paid)" className="h-12! text-base" />
+      </Field>
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="End date" id="bill-end">
           <Input id="bill-end" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="h-12! text-base" />
@@ -287,7 +331,11 @@ export function BillForm({ billId }: { billId?: string }) {
       </fieldset>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={autopay} onChange={(event) => setAutopay(event.target.checked)} />
-        Autopay is on. You still confirm the amount when you mark it paid.
+        Autopay is on. It stays pending until you confirm the charge.
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={muted} onChange={(event) => setMuted(event.target.checked)} />
+        Mute reminders for this bill
       </label>
       <Field label="Portal link" id="bill-portal">
         <Input id="bill-portal" value={portalUrl} onChange={(event) => setPortalUrl(event.target.value)} placeholder="https://" className="h-12! text-base" />

@@ -25,12 +25,15 @@ const empty = {
   minimumPayment: "",
   apr: "",
   autopay: false,
+  cardholderId: "",
 };
 
 export function CardBoard() {
   const { propertyId, ready } = usePropertyScope();
   const [cards, setCards] = useState<CardDTO[]>([]);
   const [properties, setProperties] = useState<PropertyDTO[]>([]);
+  const [people, setPeople] = useState<{ id: string; name: string }[]>([]);
+  const [cardholderId, setCardholderId] = useState("");
   const [form, setForm] = useState(empty);
   const [editing, setEditing] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
@@ -44,6 +47,7 @@ export function CardBoard() {
   }
 
   useEffect(() => {
+    api<{ people: { id: string; name: string }[] }>("/api/v1/people").then((data) => setPeople(data.people)).catch(() => undefined);
     api<{ properties: PropertyDTO[] }>("/api/v1/properties")
       .then((data) => {
         const openProperties = data.properties.filter((property) => !property.archived);
@@ -73,6 +77,7 @@ export function CardBoard() {
       minimumPayment: card.minimumPayment,
       apr: card.apr ?? "",
       autopay: card.autopay,
+      cardholderId: card.cardholderId ?? "",
     });
   }
 
@@ -109,6 +114,10 @@ export function CardBoard() {
             {total == null ? "Add a card to see utilization." : `${total}% used across these cards.`} Only the last 4 digits are stored.
           </p>
         </div>
+        <select aria-label="Cardholder" value={cardholderId} onChange={(event) => setCardholderId(event.target.value)} className="h-11 rounded-lg border border-border bg-background px-2 text-sm">
+          <option value="">All cardholders</option>
+          {people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+        </select>
         <Button type="button" className="h-11!" onClick={() => { setEditing(null); setOpen(true); }}>
           Add card
         </Button>
@@ -121,7 +130,7 @@ export function CardBoard() {
         </div>
       ) : null}
       <ul className="grid gap-3">
-        {cards.map((card) => (
+        {cards.filter((card) => !cardholderId || card.cardholderId === cardholderId).map((card) => (
           <li key={card.id} className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -210,6 +219,15 @@ export function CardBoard() {
               />
             </div>
           ))}
+          <div className="grid gap-1.5">
+            <Label htmlFor="card-holder">Cardholder</Label>
+            <select id="card-holder" className="h-12 rounded-lg border border-border bg-background px-3" value={form.cardholderId} onChange={(event) => setForm((current) => ({ ...current, cardholderId: event.target.value }))}>
+              <option value="">Shared / none</option>
+              {people.map((person) => (
+                <option key={person.id} value={person.id}>{person.name}</option>
+              ))}
+            </select>
+          </div>
           <div className="grid gap-1.5">
             <Label htmlFor="card-property">Property</Label>
             <select id="card-property" className="h-12 rounded-lg border border-border bg-background px-3" value={form.propertyId} onChange={(event) => setForm((current) => ({ ...current, propertyId: event.target.value }))}>

@@ -16,6 +16,8 @@ export type PropertyDTO = {
 export type CategoryDTO = {
   id: string;
   name: string;
+  color: string;
+  parentId: string | null;
   sortOrder: number;
   archived: boolean;
   expenseCount: number;

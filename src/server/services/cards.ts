@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 
+import { cardMonthFlags } from "@/core/card-month";
 import { cardDates, utilizationPercent } from "@/core/cards";
 import { events } from "@/core/events";
 import type { CardDTO } from "@/lib/bill-types";
@@ -31,13 +32,15 @@ export async function listCards(propertyId?: string | null): Promise<CardDTO[]> 
   const today = todayInChicago();
   const rows = await prisma.creditCard.findMany({
     where: { householdId: household.id, archivedAt: null, ...(propertyId ? { propertyId } : {}) },
-    include: { property: true },
+    include: { property: true, cardholder: true, bill: { include: { monthEntries: { where: { yearMonth: today.slice(0, 7) } } } } },
     orderBy: { nickname: "asc" },
   });
   return rows.map((row) => {
     const dates = cardDates(today, row.statementDay, row.dueDay);
     const balance = toCents(row.currentBalance.toFixed(2));
     const limit = toCents(row.creditLimit.toFixed(2));
+    const month = row.bill?.monthEntries[0];
+    const flags = cardMonthFlags(month?.statementAmount?.toFixed(2) ?? null, month?.amountPaid?.toFixed(2) ?? null);
     return {
       id: row.id,
       propertyId: row.propertyId,
@@ -53,6 +56,12 @@ export async function listCards(propertyId?: string | null): Promise<CardDTO[]> 
       minimumPayment: row.minimumPayment.toFixed(2),
       apr: row.apr ? row.apr.toFixed(3) : null,
       autopay: row.autopay,
+      cardholderId: row.cardholderId,
+      cardholderName: row.cardholder?.name ?? null,
+      statementAmount: month?.statementAmount?.toFixed(2) ?? null,
+      amountPaid: month?.amountPaid?.toFixed(2) ?? null,
+      paidBelowStatement: flags.paidBelowStatement,
+      balanceCarried: flags.balanceCarried,
       archived: false,
       nextStatement: dates.nextStatement,
       nextDue: dates.nextDue,
@@ -85,6 +94,7 @@ export type CardWrite = {
   minimumPayment: string | number;
   apr?: string | number | null;
   autopay?: boolean;
+  cardholderId?: string | null;
 };
 
 function aprOf(value: string | number | null | undefined): Prisma.Decimal | null {
@@ -119,11 +129,14 @@ export async function createCard(input: CardWrite): Promise<CardDTO> {
     amount: fromCents(Math.max(minimum, 1)),
     amountKind: "variable",
     anchorDate: dates.nextDue,
-    autopay: Boolean(input.autopay),
-    frequency: "monthly",
-    dayOfMonth: day(input.dueDay, "dueDay"),
-    notes: `${issuer} ••${last4}`,
-  });
+      autopay: Boolean(input.autopay),
+      paymentMode: input.autopay ? "auto" : "manual",
+      frequency: "monthly",
+      dayOfMonth: day(input.dueDay, "dueDay"),
+      dueRuleKind: "day_of_month",
+      personId: input.cardholderId || null,
+      notes: `${issuer} ••${last4}`,
+    });
   const card = await prisma.creditCard.create({
     data: {
       householdId: household.id,
@@ -139,6 +152,7 @@ export async function createCard(input: CardWrite): Promise<CardDTO> {
       minimumPayment: new Prisma.Decimal(fromCents(minimum)),
       apr: aprOf(input.apr),
       autopay: Boolean(input.autopay),
+      cardholderId: input.cardholderId || null,
     },
   });
   events.emit("card.created", { cardId: card.id, nickname });
@@ -176,6 +190,7 @@ export async function updateCard(id: string, input: CardWrite): Promise<CardDTO>
       minimumPayment: new Prisma.Decimal(fromCents(Math.max(minimum, 0))),
       apr: aprOf(input.apr),
       autopay: Boolean(input.autopay),
+      cardholderId: input.cardholderId || null,
     },
   });
   if (existing.billId) {
