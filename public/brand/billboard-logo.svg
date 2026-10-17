@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none" role="img" aria-label="Billboard">
+  <defs>
+    <linearGradient id="billboard-bg" x1="64" y1="16" x2="456" y2="500" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7B2FE0"/>
+      <stop offset="1" stop-color="#3A1F8F"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="114" fill="url(#billboard-bg)"/>
+  <path d="M116 254 256 114l62 62v-52h48v100l30 30" stroke="#fff" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M148 222v176h216V222" stroke="#fff" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="178" y="270" width="156" height="108" rx="16" fill="#fff"/>
+  <rect x="178" y="270" width="156" height="34" rx="16" fill="#FF6B57"/>
+  <rect x="178" y="288" width="156" height="16" fill="#FF6B57"/>
+  <circle cx="220" cy="270" r="12" fill="#fff"/>
+  <circle cx="292" cy="270" r="12" fill="#fff"/>
+  <path d="M214 332l26 26 56-64" stroke="#FF6B57" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

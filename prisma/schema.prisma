@@ -1,0 +1,213 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+/// Single household. v1 is one user; the row is here so a later Android client
+/// and a partner invite have a tenant to attach to.
+model Household {
+  id               String            @id @default(cuid())
+  name             String
+  timezone         String            @default("America/Chicago")
+  currency         String            @default("USD")
+  createdAt        DateTime          @default(now())
+  properties       Property[]
+  categories       Category[]
+  paymentMethods   PaymentMethod[]
+  expenses         Expense[]
+  people           Person[]
+  vehicles         Vehicle[]
+  occupancyPeriods OccupancyPeriod[]
+  payerSplits      PayerSplit[]
+  reminderSettings ReminderSetting[]
+}
+
+model Property {
+  id               String            @id @default(cuid())
+  householdId      String
+  household        Household         @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  /// Stable seed key. Renames do not change it.
+  slug             String
+  name             String
+  address          String?
+  notes            String?
+  sortOrder        Int               @default(0)
+  archivedAt       DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  expenses         Expense[]
+  occupancyPeriods OccupancyPeriod[]
+
+  @@unique([householdId, slug])
+  @@unique([householdId, name])
+  @@index([householdId, sortOrder])
+}
+
+model Category {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  slug        String
+  name        String
+  sortOrder   Int       @default(0)
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  expenses    Expense[]
+
+  @@unique([householdId, slug])
+  @@unique([householdId, name])
+  @@index([householdId, sortOrder])
+}
+
+/// Nickname plus optional last 4. Never a full account number.
+model PaymentMethod {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  slug        String
+  nickname    String
+  last4       String?
+  sortOrder   Int       @default(0)
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  expenses    Expense[]
+
+  @@unique([householdId, slug])
+  @@index([householdId, sortOrder])
+}
+
+model Expense {
+  id              String        @id @default(cuid())
+  householdId     String
+  household       Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  /// Calendar date in America/Chicago. No time component.
+  expenseDate     DateTime      @db.Date
+  propertyId      String
+  property        Property      @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  categoryId      String
+  category        Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  paymentMethodId String
+  paymentMethod   PaymentMethod @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
+  payee           String
+  amount          Decimal       @db.Decimal(12, 2)
+  notes           String?
+  /// Seeded demo rows. Cleared without touching real expenses.
+  isSample        Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([householdId, expenseDate])
+  @@index([propertyId, expenseDate])
+  @@index([categoryId])
+  @@index([paymentMethodId])
+  @@index([isSample])
+}
+
+/// Later screen: people in the household. No API in v1.
+model Person {
+  id          String            @id @default(cuid())
+  householdId String
+  household   Household         @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name        String
+  notes       String?
+  sortOrder   Int               @default(0)
+  archivedAt  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  splitShares PayerSplitShare[]
+
+  @@unique([householdId, name])
+  @@index([householdId, sortOrder])
+}
+
+/// Later screen: vehicles. No API in v1.
+model Vehicle {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name        String
+  notes       String?
+  sortOrder   Int       @default(0)
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([householdId, name])
+  @@index([householdId, sortOrder])
+}
+
+/// Later screen: effective-dated occupancy. No API in v1.
+model OccupancyPeriod {
+  id          String       @id @default(cuid())
+  householdId String
+  household   Household    @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  propertyId  String
+  property    Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  use         OccupancyUse
+  startDate   DateTime     @db.Date
+  endDate     DateTime?    @db.Date
+  notes       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([householdId])
+  @@index([propertyId, startDate])
+}
+
+/// Later screen: how a bill is split across people. No API in v1.
+model PayerSplit {
+  id          String            @id @default(cuid())
+  householdId String
+  household   Household         @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name        String?
+  notes       String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  shares      PayerSplitShare[]
+
+  @@index([householdId])
+}
+
+model PayerSplitShare {
+  id       String     @id @default(cuid())
+  splitId  String
+  split    PayerSplit @relation(fields: [splitId], references: [id], onDelete: Cascade)
+  personId String
+  person   Person     @relation(fields: [personId], references: [id], onDelete: Restrict)
+  /// 10000 basis points = 100%.
+  shareBps Int
+  notes    String?
+
+  @@unique([splitId, personId])
+}
+
+/// Later screen: reminder lead times. No API in v1.
+model ReminderSetting {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  label       String
+  enabled     Boolean   @default(true)
+  leadDays    Int[]     @default([])
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([householdId])
+}
+
+enum OccupancyUse {
+  primary_residence
+  second_home
+  rental
+  vacant_for_rent
+  under_construction
+  personal
+}

@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: billboard
+      POSTGRES_PASSWORD: billboard
+      POSTGRES_DB: billboard
+    volumes:
+      - billboard-pg:/var/lib/postgresql/data
+
+volumes:
+  billboard-pg:
