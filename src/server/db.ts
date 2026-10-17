@@ -1,5 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 
+import { openLedgerStore } from "@/core/ledger-store";
+
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 export const prisma =
@@ -11,3 +13,6 @@ export const prisma =
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
+
+/** Supabase via Prisma. See LedgerStore for the later SQLCipher seam. */
+export const ledger = openLedgerStore(prisma);

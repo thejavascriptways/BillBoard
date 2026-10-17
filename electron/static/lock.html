@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Unlock BillBoard</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #1a1224;
+        --muted: #534c66;
+        --coral: #c2412f;
+        --line: rgba(26, 18, 36, 0.12);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 32px 20px;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        color: var(--ink);
+        background: linear-gradient(160deg, #7b2fe0, #3a1f8f);
+      }
+      main {
+        width: min(420px, 100%);
+        background: #fff;
+        border-radius: 28px;
+        padding: 32px 28px 28px;
+        box-shadow: 0 24px 60px rgba(26, 18, 36, 0.28);
+      }
+      img { width: 64px; height: 64px; border-radius: 16px; }
+      .eyebrow {
+        margin: 16px 0 0;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--coral);
+      }
+      h1 {
+        margin: 6px 0 0;
+        font-family: Georgia, "Iowan Old Style", serif;
+        font-size: 52px;
+        font-weight: 560;
+        letter-spacing: -0.03em;
+        line-height: 0.95;
+      }
+      p.lead { margin: 12px 0 0; color: var(--muted); line-height: 1.45; }
+      form { display: grid; gap: 12px; margin-top: 22px; }
+      label { font-size: 14px; font-weight: 600; }
+      input {
+        width: 100%;
+        height: 48px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        padding: 0 14px;
+        font: inherit;
+        font-size: 16px;
+      }
+      input:focus { outline: 3px solid rgba(123, 47, 224, 0.28); border-color: #7b2fe0; }
+      button {
+        height: 48px;
+        border: 0;
+        border-radius: 12px;
+        font: inherit;
+        font-size: 16px;
+        font-weight: 650;
+        cursor: pointer;
+      }
+      button.primary { color: #fff; background: linear-gradient(135deg, #7b2fe0, #3a1f8f); }
+      button.ghost {
+        color: var(--ink);
+        background: #fff1ef;
+      }
+      .error { min-height: 1.2em; margin: 0; color: var(--coral); font-size: 14px; }
+      .hidden { display: none; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="logo.png" alt="" />
+      <p class="eyebrow">Household ledger</p>
+      <h1>BillBoard</h1>
+      <p class="lead" id="lead">Enter the lock password for this Mac.</p>
+      <form id="form">
+        <div>
+          <label for="password" id="password-label">Password</label>
+          <input id="password" type="password" autocomplete="current-password" required />
+        </div>
+        <div id="confirm-wrap" class="hidden">
+          <label for="confirm">Confirm password</label>
+          <input id="confirm" type="password" autocomplete="new-password" />
+        </div>
+        <p class="error" id="error" role="alert"></p>
+        <button class="primary" id="submit" type="submit">Unlock</button>
+        <button class="ghost hidden" id="touch" type="button">Unlock with Touch ID</button>
+      </form>
+    </main>
+    <script>
+      const lead = document.getElementById("lead");
+      const form = document.getElementById("form");
+      const password = document.getElementById("password");
+      const confirmWrap = document.getElementById("confirm-wrap");
+      const confirmInput = document.getElementById("confirm");
+      const error = document.getElementById("error");
+      const submit = document.getElementById("submit");
+      const touch = document.getElementById("touch");
+      const label = document.getElementById("password-label");
+      let creating = false;
+
+      function showError(message) {
+        error.textContent = message || "";
+      }
+
+      async function refresh() {
+        const status = await window.billboardDesktop.status();
+        creating = !status.hasPassword;
+        lead.textContent = creating
+          ? "Choose a password for this Mac. It stays on this computer and unlocks BillBoard."
+          : "Enter the lock password for this Mac.";
+        label.textContent = creating ? "New password" : "Password";
+        submit.textContent = creating ? "Save and unlock" : "Unlock";
+        confirmWrap.classList.toggle("hidden", !creating);
+        confirmInput.required = creating;
+        touch.classList.toggle("hidden", creating || !status.touchId);
+        password.focus();
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        showError("");
+        submit.disabled = true;
+        try {
+          if (creating && password.value !== confirmInput.value) {
+            showError("Those passwords don't match.");
+            return;
+          }
+          const result = creating
+            ? await window.billboardDesktop.setupPassword(password.value)
+            : await window.billboardDesktop.unlock(password.value);
+          if (!result.ok) showError(result.error);
+        } finally {
+          submit.disabled = false;
+        }
+      });
+
+      touch.addEventListener("click", async () => {
+        showError("");
+        touch.disabled = true;
+        try {
+          const result = await window.billboardDesktop.touchId();
+          if (!result.ok) showError(result.error);
+        } finally {
+          touch.disabled = false;
+        }
+      });
+
+      refresh();
+    </script>
+  </body>
+</html>

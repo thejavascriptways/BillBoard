@@ -59,7 +59,8 @@ function sessionCookieOptions(maxAge: number) {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    // The desktop app serves itself over http://127.0.0.1. A Secure cookie would be dropped.
+    secure: process.env.BILLBOARD_DESKTOP === "1" ? false : process.env.NODE_ENV === "production",
     path: "/",
     maxAge,
   };

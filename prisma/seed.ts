@@ -162,7 +162,7 @@ export async function seed(client: PrismaClient = sharedPrisma) {
 
 async function main() {
   const result = await seed();
-  console.log(`Billboard seed complete for ${result.household}.`);
+  console.log(`BillBoard seed complete for ${result.household}.`);
   console.log(`Sample expenses: ${result.samples} (payees start with "SAMPLE ·").`);
   console.log("Clear them with npm run db:clear-samples, or from Settings in the app.");
 }

@@ -1,12 +1,12 @@
-# Billboard
+# BillBoard
 
-Billboard is a private household expense tracker. You log what was paid, see this month and the year so far, and export a CSV. Properties, categories, and payment methods are edited in Settings. The seed data is only a starting set.
+BillBoard is a private household ledger for the Mac. It runs on your computer, locks with a password (and Touch ID when the Mac offers it), and keeps the books in your Supabase project. Properties, categories, payment methods, and the expense log work today. Due dates, reminders, and credit cards are later steps.
 
 Dates are calendar days in `America/Chicago`. Amounts are USD. Nothing here connects to a bank, stores a card number, or moves money.
 
 ## Local setup
 
-These steps are the same on Windows and macOS. You do not install Postgres, and you do not need Docker. The database is a free [Supabase](https://supabase.com) project. Billboard reaches it through Prisma. Leave Supabase Auth off. The family shares one password.
+These steps are the same on Windows and macOS. You do not install Postgres, and you do not need Docker. The database is a free [Supabase](https://supabase.com) project. BillBoard reaches it through Prisma. Leave Supabase Auth off. In the browser, the family shares one password. The Mac app uses its own lock password instead.
 
 ### 1. Install Node.js
 
@@ -27,7 +27,7 @@ npm -v
 2. Wait until the project finishes starting. Open **Connect**.
 3. Copy the **transaction** pooler string (port **6543**) and the **session** pooler string (port **5432**, same pooler host). You do not need the anon key or the service role key.
 
-If the database password contains characters such as `@`, `#`, or `%`, replace each one in the URL with its percent-encoding (`@` becomes `%40`, `#` becomes `%23`).
+If the database password contains characters such as `@`, `#`, `%`, or `/`, replace each one in the URL with its percent-encoding (`@` becomes `%40`, `#` becomes `%23`, `%` becomes `%25`, `/` becomes `%2F`). A password of `p@ss` that is not encoded makes Prisma fail to connect.
 
 ### 3. Create `.env`
 
@@ -118,6 +118,37 @@ npm run dev
 
 That starts Postgres on port 5432 with user `billboard`, password `billboard`, and database `billboard`.
 
+## Mac app
+
+On your Mac (Apple Silicon), from this folder:
+
+```bash
+npm install
+cp .env.example .env
+```
+
+Edit `.env` with the Supabase URLs from the section above. URL-encode special characters in the database password (`@` is `%40`). Then:
+
+```bash
+npx prisma migrate deploy
+npm run db:seed
+npm run desktop:dev
+```
+
+`desktop:dev` compiles the Electron shell and starts the production Next.js server on port 3921. The first window asks you to create a lock password. That password is hashed and stored in BillBoard’s app data, sealed with the macOS Keychain when the system allows it. It is not `APP_PASSWORD`. `APP_PASSWORD` is only for the browser at `npm run dev`.
+
+The menu bar icon stays after you close the window. Open BillBoard, Lock, and Quit are on that icon. In Settings, on this Mac, you can change the idle lock (default 10 minutes) and turn on launch at login. The app also locks when the Mac sleeps or the screen locks.
+
+Build an unsigned Apple Silicon app:
+
+```bash
+npm run desktop:build
+```
+
+The disk image is `dist/BillBoard-0.1.0-arm64.dmg`. The first time you open it, right-click the app and choose Open, because it is not signed. The packaged app does not read `.env`. The first window asks for `DATABASE_URL`, `DIRECT_URL`, and `AUTH_SECRET`, or you can import an existing `.env` file. Those values are stored with Electron `safeStorage` (the macOS Keychain).
+
+The database is still Supabase, encrypted at rest by Supabase. A local SQLCipher store can be added later behind `src/core/ledger-store.ts`. It is not built yet.
+
 ## Scripts
 
 | Script | What it does |
@@ -130,6 +161,8 @@ That starts Postgres on port 5432 with user `billboard`, password `billboard`, a
 | `npm run db:deploy` | Apply committed migrations |
 | `npm run db:seed` | Seed starter properties, categories, payment methods, and sample expenses |
 | `npm run db:clear-samples` | Delete rows marked as samples |
+| `npm run desktop:dev` | Mac (or Linux) app shell around the production server |
+| `npm run desktop:build` | Unsigned macOS arm64 `.dmg` on a Mac; a Linux folder build elsewhere |
 
 ## Deploy on Vercel + Supabase (free tier)
 
@@ -158,7 +191,7 @@ Postgres is a [Supabase](https://supabase.com) project on the free plan. Prisma 
 
 There is no public registration and no second login. The password check is the whole login. The session is an HttpOnly cookie. Do not commit `.env`.
 
-On an Android phone, open the site in Chrome and use the menu item **Install app** or **Add to Home screen**. The installed name is Billboard.
+On an Android phone, open the site in Chrome and use the menu item **Install app** or **Add to Home screen**. The installed name is BillBoard. The Mac app is the one Deepak runs day to day.
 
 ## API
 
@@ -195,4 +228,4 @@ Errors look like `{ "error": { "code", "message", "fieldErrors"? } }`.
 
 ## Not in this version
 
-Recurring bills, due dates, reminder screens, occupancy history for the January 2027 move, and Schedule E tax exports are intentionally left for later. The database already has tables for people, vehicles, occupancy periods, payer splits, and reminder settings so those screens can be added without a new tenant model. A person row, when that screen exists, is a name on the ledger. It is not a login and it has no role. Billboard v1 only records expenses the household enters.
+Step 1 is the Mac shell: lock, Keychain secrets, menu bar, and the expense log you already have. Still later: bills and due dates, recurrence, payments, credit cards, reminders while the window is closed, and a local SQLCipher database. The Supabase tables for people, vehicles, occupancy, payer splits, and reminder settings are already there and have no screens yet. A person row, when that screen exists, is a name on the ledger. It is not a login and it has no role.

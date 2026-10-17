@@ -2,6 +2,19 @@
   "name": "billboard",
   "version": "0.1.0",
   "private": true,
+  "main": "electron-dist/main.js",
+  "allowScripts": {
+    "@prisma/client": true,
+    "@prisma/engines": true,
+    "esbuild": true,
+    "fsevents": true,
+    "prisma": true,
+    "unrs-resolver": true,
+    "electron": true,
+    "electron-builder": true,
+    "@electron/get": true,
+    "app-builder-bin": true
+  },
   "scripts": {
     "dev": "next dev -p 3847 -H 0.0.0.0",
     "build": "prisma generate && prisma migrate deploy && next build",
@@ -10,12 +23,14 @@
     "test": "vitest run",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "db:seed": "tsx prisma/seed.ts",
-    "db:clear-samples": "tsx prisma/clear-samples.ts",
+    "db:seed": "tsx --env-file=.env prisma/seed.ts",
+    "db:clear-samples": "tsx --env-file=.env prisma/clear-samples.ts",
+    "desktop:dev": "tsc -p tsconfig.electron.json && electron .",
+    "desktop:build": "node scripts/desktop-build.mjs",
     "postinstall": "prisma generate"
   },
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx --env-file=.env prisma/seed.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
@@ -39,11 +54,75 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "dotenv": "^18.0.8",
+    "electron": "^35.7.5",
+    "electron-builder": "^26.0.12",
     "eslint": "^9",
     "eslint-config-next": "16.4.2",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.5"
+  },
+  "build": {
+    "appId": "com.deepaksingla.billboard",
+    "productName": "BillBoard",
+    "executableName": "billboard",
+    "asar": true,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron-dist/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/static",
+        "to": "electron-static"
+      },
+      {
+        "from": ".next/standalone",
+        "to": "standalone"
+      },
+      {
+        "from": ".next/static",
+        "to": "standalone/.next/static"
+      },
+      {
+        "from": "public",
+        "to": "standalone/public"
+      },
+      {
+        "from": "build/tray.png",
+        "to": "tray.png"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.finance",
+      "icon": "build/icon.icns",
+      "identity": null,
+      "gatekeeperAssess": false,
+      "hardenedRuntime": false,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        },
+        {
+          "target": "dir",
+          "arch": ["arm64"]
+        }
+      ]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Office",
+      "target": [
+        {
+          "target": "dir",
+          "arch": ["x64"]
+        }
+      ]
+    }
   }
 }

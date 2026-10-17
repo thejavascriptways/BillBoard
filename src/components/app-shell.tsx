@@ -61,7 +61,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <BillboardLogo className="size-9 rounded-[22%] ring-2 ring-white" />
               <span className="font-display text-[1.7rem] leading-none tracking-tight">{APP_NAME}</span>
             </Link>
-            <p className="hidden text-sm md:block">Household expenses</p>
+            <p className="hidden text-sm md:block">Household ledger</p>
           </header>
           <main className="flex-1 px-4 pt-5 pb-28 md:px-8 md:pt-8 md:pb-16">{children}</main>
         </div>

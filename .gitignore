@@ -16,6 +16,11 @@
 # next.js
 /.next/
 /out/
+.next-dev.log
+
+# electron
+/electron-dist/
+/dist/
 
 # production
 /build

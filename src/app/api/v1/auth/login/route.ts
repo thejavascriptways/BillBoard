@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const secret = process.env.AUTH_SECRET;
     if (!password || !secret || secret.length < 16) {
       throw new ServiceError(
-        "Billboard auth is not configured. Set APP_PASSWORD and AUTH_SECRET.",
+        "BillBoard auth is not configured. Set APP_PASSWORD and AUTH_SECRET.",
         500,
         "misconfigured",
       );

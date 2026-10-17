@@ -4,7 +4,12 @@ import { verifySession } from "@/lib/auth";
 import { isPublicAsset, safeNextPath } from "@/lib/paths";
 import { SESSION_COOKIE } from "@/lib/constants";
 
-const PUBLIC_PATHS = new Set(["/login", "/api/v1/auth/login", "/api/v1/auth/session"]);
+const PUBLIC_PATHS = new Set([
+  "/login",
+  "/api/v1/auth/login",
+  "/api/v1/auth/session",
+  "/api/v1/auth/desktop-session",
+]);
 
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;

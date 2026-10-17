@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Set up BillBoard</title>
+    <style>
+      :root { color-scheme: light; --ink: #1a1224; --muted: #534c66; --coral: #c2412f; --line: rgba(26, 18, 36, 0.12); }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 28px 16px;
+        font-family: "Segoe UI", system-ui, sans-serif; color: var(--ink);
+        background: linear-gradient(160deg, #7b2fe0, #3a1f8f);
+      }
+      main {
+        width: min(560px, 100%); background: #fff; border-radius: 28px; padding: 28px;
+        box-shadow: 0 24px 60px rgba(26, 18, 36, 0.28);
+      }
+      img { width: 56px; height: 56px; border-radius: 14px; }
+      h1 { margin: 12px 0 0; font-family: Georgia, serif; font-size: 40px; letter-spacing: -0.03em; }
+      p { color: var(--muted); line-height: 1.45; }
+      form { display: grid; gap: 12px; }
+      label { font-size: 14px; font-weight: 650; }
+      input, textarea {
+        width: 100%; border-radius: 12px; border: 1px solid var(--line); padding: 12px 14px; font: inherit; font-size: 14px;
+      }
+      textarea { min-height: 72px; resize: vertical; }
+      input:focus, textarea:focus { outline: 3px solid rgba(123, 47, 224, 0.28); border-color: #7b2fe0; }
+      button { height: 46px; border: 0; border-radius: 12px; font: inherit; font-weight: 650; cursor: pointer; }
+      .primary { color: #fff; background: linear-gradient(135deg, #7b2fe0, #3a1f8f); }
+      .ghost { background: #f4f0fc; color: #3a1f8f; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; }
+      .row button { flex: 1; }
+      .error { color: var(--coral); min-height: 1.2em; margin: 0; font-size: 14px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img src="logo.png" alt="" />
+      <h1>Connect BillBoard</h1>
+      <p>
+        Paste the Supabase connection strings. They are saved in the macOS Keychain on this Mac, not in a file you commit.
+        If the database password contains @, #, or %, encode it in the URL (@ becomes %40).
+      </p>
+      <form id="form">
+        <div>
+          <label for="database">DATABASE_URL (transaction pooler, port 6543)</label>
+          <textarea id="database" required spellcheck="false" placeholder="postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&sslmode=require"></textarea>
+        </div>
+        <div>
+          <label for="direct">DIRECT_URL (session pooler, port 5432)</label>
+          <textarea id="direct" required spellcheck="false" placeholder="postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres?sslmode=require"></textarea>
+        </div>
+        <div>
+          <label for="secret">AUTH_SECRET</label>
+          <input id="secret" required spellcheck="false" placeholder="A long random string, at least 16 characters" />
+        </div>
+        <p class="error" id="error" role="alert"></p>
+        <div class="row">
+          <button class="ghost" id="import" type="button">Import a .env file</button>
+          <button class="primary" type="submit">Save and continue</button>
+        </div>
+      </form>
+    </main>
+    <script>
+      const form = document.getElementById("form");
+      const error = document.getElementById("error");
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        error.textContent = "";
+        const result = await window.billboardDesktop.saveSecrets({
+          databaseUrl: document.getElementById("database").value,
+          directUrl: document.getElementById("direct").value,
+          authSecret: document.getElementById("secret").value,
+        });
+        if (!result.ok) error.textContent = result.error;
+      });
+      document.getElementById("import").addEventListener("click", async () => {
+        error.textContent = "";
+        const result = await window.billboardDesktop.importEnv();
+        if (!result.ok) error.textContent = result.error;
+      });
+    </script>
+  </body>
+</html>

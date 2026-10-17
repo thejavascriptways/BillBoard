@@ -6,7 +6,7 @@ export async function getHousehold() {
   const household = await prisma.household.findFirst({ orderBy: { createdAt: "asc" } });
   if (!household) {
     throw new ServiceError(
-      "Billboard isn't set up yet. Run npm run db:seed.",
+      "BillBoard isn't set up yet. Run npm run db:seed.",
       503,
       "not_seeded",
     );
