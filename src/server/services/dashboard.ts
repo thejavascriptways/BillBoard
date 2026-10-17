@@ -1,4 +1,3 @@
-import { totalUtilization } from "@/core/cards";
 import type { DueBoardDTO } from "@/lib/bill-types";
 import { addDays, formatIsoDate, todayInChicago } from "@/lib/dates";
 import { fromCents, toCents } from "@/lib/money";
@@ -42,12 +41,7 @@ export async function getDueBoard(propertyId?: string | null): Promise<DueBoardD
       paid: fromCents(row.paid),
     })),
     cards: {
-      totalUtilization: totalUtilization(
-        cards.map((card) => ({
-          balanceCents: toCents(card.currentBalance),
-          limitCents: toCents(card.creditLimit),
-        })),
-      ),
+      totalUtilization: null,
       items: cards,
     },
   };

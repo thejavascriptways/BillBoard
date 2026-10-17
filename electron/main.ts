@@ -751,7 +751,7 @@ async function runSmoke(): Promise<void> {
       ["/", "screenshot_dashboard.png", "This month"],
       ["/calendar", "screenshot_calendar.png", "Calendar"],
       ["/bills/new", "screenshot_bill_form.png", "Quick add"],
-      ["/cards", "screenshot_cards.png", "Credit cards"],
+      ["/cards?new=1", "screenshot_cards.png", "Last 4"],
       [process.env.BILLBOARD_SHOT_BILL || "/bills", "screenshot_paid.png", "Payment history"],
       ["/settings", "screenshot_settings.png", "Reminders"],
     ] as const;

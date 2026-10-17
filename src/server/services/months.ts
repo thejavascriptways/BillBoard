@@ -87,7 +87,7 @@ export async function ensureMonth(yearMonthInput: string) {
       amountKind: bill.amountKind,
       amount: bill.amount.toFixed(2),
       isCard: card,
-      balanceCents: bill.creditCard ? Math.round(Number(bill.creditCard.currentBalance) * 100) : null,
+      balanceCents: bill.creditCard?.currentBalance == null ? null : Math.round(Number(bill.creditCard.currentBalance) * 100),
     });
     await prisma.monthEntry.create({
       data: {

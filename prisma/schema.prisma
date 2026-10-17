@@ -381,14 +381,14 @@ model CreditCard {
   property         Property  @relation(fields: [propertyId], references: [id], onDelete: Restrict)
   billId           String?   @unique
   bill             Bill?     @relation(fields: [billId], references: [id], onDelete: SetNull)
-  issuer           String
-  nickname         String
+  issuer           String    @default("")
+  nickname         String    @default("")
   last4            String
-  creditLimit      Decimal   @db.Decimal(12, 2)
-  currentBalance   Decimal   @db.Decimal(12, 2)
-  statementDay     Int
-  dueDay           Int
-  minimumPayment   Decimal   @db.Decimal(12, 2)
+  creditLimit      Decimal?  @db.Decimal(12, 2)
+  currentBalance   Decimal?  @db.Decimal(12, 2)
+  statementDay     Int?
+  dueDay           Int?
+  minimumPayment   Decimal?  @db.Decimal(12, 2)
   apr              Decimal?  @db.Decimal(6, 3)
   autopay          Boolean   @default(false)
   cardholderId     String?

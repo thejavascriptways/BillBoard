@@ -190,21 +190,16 @@ export async function exportPaymentsCsv(propertyId?: string | null): Promise<str
 export async function exportCardsCsv(): Promise<string> {
   const cards = await listCards();
   return toCsv(
-    ["Nickname", "Issuer", "Last 4", "Property", "Limit", "Balance", "Utilization", "Statement day", "Due day", "Next statement", "Next due", "Minimum", "APR", "Autopay"],
+    ["Name", "Issuer", "Last 4", "Property", "Statement day", "Due day", "Next statement", "Next due", "Autopay"],
     cards.map((card) => [
-      card.nickname,
+      card.displayName,
       card.issuer,
       card.last4,
       card.propertyName,
-      card.creditLimit,
-      card.currentBalance,
-      card.utilization == null ? "" : String(card.utilization),
-      String(card.statementDay),
-      String(card.dueDay),
-      card.nextStatement,
-      card.nextDue,
-      card.minimumPayment,
-      card.apr ?? "",
+      card.statementDay == null ? "" : String(card.statementDay),
+      card.dueDay == null ? "" : String(card.dueDay),
+      card.nextStatement ?? "",
+      card.nextDue ?? "",
       card.autopay ? "yes" : "",
     ]),
   );

@@ -14,8 +14,8 @@ const stamp = `mvp-${Date.now().toString(36)}`;
 describe("mvp ledger", () => {
   afterAll(async () => {
     await prisma.payment.deleteMany({ where: { bill: { name: { contains: stamp } } } });
-    await prisma.creditCard.deleteMany({ where: { nickname: { contains: stamp } } });
-    await prisma.bill.deleteMany({ where: { name: { contains: stamp } } });
+    await prisma.creditCard.deleteMany({ where: { OR: [{ nickname: { contains: stamp } }, { last4: "4421", nickname: "" }] } });
+    await prisma.bill.deleteMany({ where: { OR: [{ name: { contains: stamp } }, { name: "Card •••• 4421" }] } });
     await prisma.payee.deleteMany({ where: { name: { contains: stamp } } });
     await prisma.$disconnect();
   });
@@ -56,30 +56,26 @@ describe("mvp ledger", () => {
     expect(history.map((row) => row.confirmationNumber).sort()).toEqual(["CONF-1", "CONF-2"]);
   });
 
-  it("adds a card with statement, due date, balance, and utilization", async () => {
-    const household = await prisma.household.findFirstOrThrow();
-    const property = await prisma.property.findFirstOrThrow({ where: { householdId: household.id, slug: "personal" } });
-    const card = await createCard({
+  it("adds a card from the last 4 digits and waits for a due day", async () => {
+    const bare = await createCard({ last4: "4421" });
+    expect(bare.displayName).toBe("Card •••• 4421");
+    expect(bare.utilization).toBeNull();
+    expect(bare.nextDue).toBeNull();
+    expect(bare.billId).toBeTruthy();
+    expect(await prisma.occurrence.count({ where: { billId: bare.billId! } })).toBe(0);
+
+    const named = await createCard({
       issuer: "Chase",
       nickname: `Chase ${stamp}`,
-      last4: "4421",
-      propertyId: property.id,
-      creditLimit: "10000",
-      currentBalance: "2500",
+      last4: "1001",
       statementDay: 15,
       dueDay: 10,
-      minimumPayment: "40",
-      apr: "19.99",
       autopay: true,
     });
-    expect(card.last4).toBe("4421");
-    expect(card.utilization).toBe(25);
-    expect(card.nextStatement).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(card.nextDue).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(card.billId).toBeTruthy();
-    await expect(createCard({ ...card, issuer: "Amex", nickname: `Bad ${stamp}`, last4: "4111111111111111", propertyId: property.id, creditLimit: "1", currentBalance: "0", statementDay: 1, dueDay: 1, minimumPayment: "1" })).rejects.toMatchObject({
-      code: "invalid",
-    });
+    expect(named.displayName).toBe(`Chase ${stamp}`);
+    expect(named.nextDue).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(await prisma.occurrence.count({ where: { billId: named.billId! } })).toBeGreaterThan(0);
+    await expect(createCard({ last4: "4111111111111111" })).rejects.toMatchObject({ code: "invalid" });
   });
 
   it("restores an encrypted backup and imports the sample plugin", async () => {

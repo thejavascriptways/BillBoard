@@ -114,13 +114,10 @@ export type CardDTO = {
   billId: string | null;
   issuer: string;
   nickname: string;
+  displayName: string;
   last4: string;
-  creditLimit: string;
-  currentBalance: string;
-  statementDay: number;
-  dueDay: number;
-  minimumPayment: string;
-  apr: string | null;
+  statementDay: number | null;
+  dueDay: number | null;
   autopay: boolean;
   cardholderId: string | null;
   cardholderName: string | null;
@@ -129,9 +126,9 @@ export type CardDTO = {
   paidBelowStatement: boolean;
   balanceCarried: boolean;
   archived: boolean;
-  nextStatement: string;
-  nextDue: string;
-  utilization: number | null;
+  nextStatement: string | null;
+  nextDue: string | null;
+  utilization: null;
 };
 
 export type DueBoardDTO = {

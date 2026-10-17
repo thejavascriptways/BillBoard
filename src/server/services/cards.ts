@@ -1,30 +1,104 @@
-import { Prisma } from "@prisma/client";
-
 import { cardMonthFlags } from "@/core/card-month";
-import { cardDates, utilizationPercent } from "@/core/cards";
+import { cardDates, cardDisplayName } from "@/core/cards";
 import { events } from "@/core/events";
 import type { CardDTO } from "@/lib/bill-types";
 import { todayInChicago } from "@/lib/dates";
-import { fromCents, parseAmountInput, toCents } from "@/lib/money";
 import { prisma } from "@/server/db";
 import { ServiceError, fieldError } from "@/server/errors";
 import { createBill, updateBill } from "@/server/services/bills";
 import { getHousehold } from "@/server/services/household";
-import { cleanLast4, cleanRequired } from "@/server/text";
+import { cleanLast4 } from "@/server/text";
 
-function centsAtLeastZero(input: string | number, field: string): number {
-  const raw = typeof input === "number" ? String(input) : input.trim();
-  if (raw === "" ) throw fieldError(field, "Enter an amount.");
-  if (/^0+(\.0{1,2})?$/.test(raw.replace(/[$,\s]/g, ""))) return 0;
-  const parsed = parseAmountInput(raw);
-  if ("error" in parsed) throw fieldError(field, parsed.error);
-  return parsed.cents;
+function optionalDay(value: unknown, field: string): number | null {
+  if (value == null || value === "") return null;
+  const next = Math.trunc(Number(value));
+  if (!Number.isFinite(next) || next < 1 || next > 31) throw fieldError(field, "Use a day from 1 to 31, or leave it blank.");
+  return next;
 }
 
-function day(value: number, field: string): number {
-  const next = Math.trunc(Number(value));
-  if (next < 1 || next > 31) throw fieldError(field, "Use a day from 1 to 31.");
-  return next;
+function optionalText(value: unknown, max: number): string {
+  if (value == null) return "";
+  const trimmed = String(value).trim().replace(/\s+/g, " ");
+  if (trimmed.length > max) throw fieldError("nickname", `Use ${max} characters or fewer.`);
+  return trimmed;
+}
+
+function requireLast4(value: string | null | undefined): string {
+  const last4 = cleanLast4(value);
+  if (!last4) throw fieldError("last4", "Enter exactly 4 digits.");
+  return last4;
+}
+
+async function propertyFor(householdId: string, propertyId?: string | null) {
+  if (propertyId) {
+    const chosen = await prisma.property.findFirst({ where: { id: propertyId, householdId } });
+    if (!chosen) throw fieldError("propertyId", "Choose a property.");
+    return chosen;
+  }
+  const personal = await prisma.property.findFirst({ where: { householdId, slug: "personal" } });
+  if (personal) return personal;
+  const any = await prisma.property.findFirst({ where: { householdId, archivedAt: null }, orderBy: { sortOrder: "asc" } });
+  if (!any) throw new ServiceError("Add a property in Settings first.", 400, "invalid");
+  return any;
+}
+
+export type CardWrite = {
+  issuer?: string | null;
+  nickname?: string | null;
+  last4: string;
+  propertyId?: string | null;
+  statementDay?: number | string | null;
+  dueDay?: number | string | null;
+  autopay?: boolean;
+  cardholderId?: string | null;
+};
+
+function toCard(
+  row: {
+    id: string;
+    propertyId: string;
+    billId: string | null;
+    issuer: string;
+    nickname: string;
+    last4: string;
+    statementDay: number | null;
+    dueDay: number | null;
+    autopay: boolean;
+    cardholderId: string | null;
+    property: { name: string };
+    cardholder: { name: string } | null;
+    bill: { monthEntries: { statementAmount: { toFixed: (n: number) => string } | null; amountPaid: { toFixed: (n: number) => string } | null }[] } | null;
+  },
+  today: string,
+): CardDTO {
+  const dates = row.statementDay && row.dueDay ? cardDates(today, row.statementDay, row.dueDay) : null;
+  const month = row.bill?.monthEntries[0];
+  const statementAmount = month?.statementAmount?.toFixed(2) ?? null;
+  const amountPaid = month?.amountPaid?.toFixed(2) ?? null;
+  const flags = cardMonthFlags(statementAmount, amountPaid);
+  return {
+    id: row.id,
+    propertyId: row.propertyId,
+    propertyName: row.property.name,
+    billId: row.billId,
+    issuer: row.issuer,
+    nickname: row.nickname,
+    displayName: cardDisplayName(row.issuer, row.nickname, row.last4),
+    last4: row.last4,
+    statementDay: row.statementDay,
+    dueDay: row.dueDay,
+    autopay: row.autopay,
+    cardholderId: row.cardholderId,
+    cardholderName: row.cardholder?.name ?? null,
+    statementAmount,
+    amountPaid,
+    paidBelowStatement: flags.paidBelowStatement,
+    balanceCarried: flags.balanceCarried,
+    archived: false,
+    nextStatement: dates?.nextStatement ?? null,
+    nextDue: row.dueDay ? (dates?.nextDue ?? cardDates(today, row.dueDay, row.dueDay).nextDue) : null,
+    utilization: null,
+  };
 }
 
 export async function listCards(propertyId?: string | null): Promise<CardDTO[]> {
@@ -33,41 +107,9 @@ export async function listCards(propertyId?: string | null): Promise<CardDTO[]> 
   const rows = await prisma.creditCard.findMany({
     where: { householdId: household.id, archivedAt: null, ...(propertyId ? { propertyId } : {}) },
     include: { property: true, cardholder: true, bill: { include: { monthEntries: { where: { yearMonth: today.slice(0, 7) } } } } },
-    orderBy: { nickname: "asc" },
+    orderBy: [{ nickname: "asc" }, { last4: "asc" }],
   });
-  return rows.map((row) => {
-    const dates = cardDates(today, row.statementDay, row.dueDay);
-    const balance = toCents(row.currentBalance.toFixed(2));
-    const limit = toCents(row.creditLimit.toFixed(2));
-    const month = row.bill?.monthEntries[0];
-    const flags = cardMonthFlags(month?.statementAmount?.toFixed(2) ?? null, month?.amountPaid?.toFixed(2) ?? null);
-    return {
-      id: row.id,
-      propertyId: row.propertyId,
-      propertyName: row.property.name,
-      billId: row.billId,
-      issuer: row.issuer,
-      nickname: row.nickname,
-      last4: row.last4,
-      creditLimit: fromCents(limit),
-      currentBalance: fromCents(balance),
-      statementDay: row.statementDay,
-      dueDay: row.dueDay,
-      minimumPayment: row.minimumPayment.toFixed(2),
-      apr: row.apr ? row.apr.toFixed(3) : null,
-      autopay: row.autopay,
-      cardholderId: row.cardholderId,
-      cardholderName: row.cardholder?.name ?? null,
-      statementAmount: month?.statementAmount?.toFixed(2) ?? null,
-      amountPaid: month?.amountPaid?.toFixed(2) ?? null,
-      paidBelowStatement: flags.paidBelowStatement,
-      balanceCarried: flags.balanceCarried,
-      archived: false,
-      nextStatement: dates.nextStatement,
-      nextDue: dates.nextDue,
-      utilization: utilizationPercent(balance, limit),
-    };
-  });
+  return rows.map((row) => toCard(row, today));
 }
 
 async function creditCategory(householdId: string) {
@@ -82,80 +124,72 @@ async function creditCategory(householdId: string) {
   );
 }
 
-export type CardWrite = {
+function billFields(input: {
   issuer: string;
   nickname: string;
   last4: string;
   propertyId: string;
-  creditLimit: string | number;
-  currentBalance: string | number;
-  statementDay: number;
-  dueDay: number;
-  minimumPayment: string | number;
-  apr?: string | number | null;
-  autopay?: boolean;
-  cardholderId?: string | null;
-};
-
-function aprOf(value: string | number | null | undefined): Prisma.Decimal | null {
-  if (value == null || value === "") return null;
-  const parsed = Number(String(value).replace("%", "").trim());
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) throw fieldError("apr", "APR is a percent from 0 to 100.");
-  return new Prisma.Decimal(parsed.toFixed(3));
+  dueDay: number | null;
+  statementDay: number | null;
+  autopay: boolean;
+  cardholderId: string | null;
+  today: string;
+}) {
+  const scheduled = input.dueDay != null;
+  const anchor = scheduled
+    ? cardDates(input.today, input.statementDay ?? input.dueDay!, input.dueDay!).nextDue
+    : input.today;
+  return {
+    name: cardDisplayName(input.issuer, input.nickname, input.last4),
+    propertyId: input.propertyId,
+    amount: "0.01",
+    amountKind: "variable" as const,
+    anchorDate: anchor,
+    autopay: input.autopay,
+    paymentMode: input.autopay ? "auto" : "manual",
+    frequency: "monthly" as const,
+    dayOfMonth: input.dueDay,
+    dueRuleKind: scheduled ? "day_of_month" : "on_demand",
+    personId: input.cardholderId,
+    notes: input.issuer ? `${input.issuer} •••• ${input.last4}` : `•••• ${input.last4}`,
+  };
 }
 
 export async function createCard(input: CardWrite): Promise<CardDTO> {
   const household = await getHousehold();
-  const issuer = cleanRequired("issuer", input.issuer, "issuer", 60);
-  const nickname = cleanRequired("nickname", input.nickname, "nickname", 60);
-  const last4 = cleanLast4(input.last4);
-  if (!last4) throw fieldError("last4", "Enter the last 4 digits.");
-  const limit = centsAtLeastZero(input.creditLimit, "creditLimit");
-  if (limit <= 0) throw fieldError("creditLimit", "Enter a credit limit greater than zero.");
-  const balance = centsAtLeastZero(input.currentBalance, "currentBalance");
-  const minimum = centsAtLeastZero(input.minimumPayment, "minimumPayment");
+  const issuer = optionalText(input.issuer, 60);
+  const nickname = optionalText(input.nickname, 60);
+  const last4 = requireLast4(input.last4);
+  const property = await propertyFor(household.id, input.propertyId);
+  const statementDay = optionalDay(input.statementDay, "statementDay");
+  const dueDay = optionalDay(input.dueDay, "dueDay");
   const category = await creditCategory(household.id);
   if (!category) throw new ServiceError("Add a category in Settings first.", 400, "invalid");
   const today = todayInChicago();
-  const dates = cardDates(today, day(input.statementDay, "statementDay"), day(input.dueDay, "dueDay"));
+  const label = cardDisplayName(issuer, nickname, last4);
   const payee = await prisma.payee.create({
-    data: { householdId: household.id, name: nickname, accountLast4: last4, categoryId: category.id, notes: issuer },
+    data: { householdId: household.id, name: label, accountLast4: last4, categoryId: category.id, notes: issuer || null },
   });
   const bill = await createBill({
-    name: `${nickname} payment`,
+    ...billFields({ issuer, nickname, last4, propertyId: property.id, dueDay, statementDay, autopay: Boolean(input.autopay), cardholderId: input.cardholderId || null, today }),
     payeeId: payee.id,
-    propertyId: input.propertyId,
     categoryId: category.id,
-    amount: fromCents(Math.max(minimum, 1)),
-    amountKind: "variable",
-    anchorDate: dates.nextDue,
-      autopay: Boolean(input.autopay),
-      paymentMode: input.autopay ? "auto" : "manual",
-      frequency: "monthly",
-      dayOfMonth: day(input.dueDay, "dueDay"),
-      dueRuleKind: "day_of_month",
-      personId: input.cardholderId || null,
-      notes: `${issuer} ••${last4}`,
-    });
+  });
   const card = await prisma.creditCard.create({
     data: {
       householdId: household.id,
-      propertyId: input.propertyId,
+      propertyId: property.id,
       billId: bill.id,
       issuer,
       nickname,
       last4,
-      creditLimit: new Prisma.Decimal(fromCents(limit)),
-      currentBalance: new Prisma.Decimal(fromCents(balance)),
-      statementDay: day(input.statementDay, "statementDay"),
-      dueDay: day(input.dueDay, "dueDay"),
-      minimumPayment: new Prisma.Decimal(fromCents(minimum)),
-      apr: aprOf(input.apr),
+      statementDay,
+      dueDay,
       autopay: Boolean(input.autopay),
       cardholderId: input.cardholderId || null,
     },
   });
-  events.emit("card.created", { cardId: card.id, nickname });
+  events.emit("card.created", { cardId: card.id, nickname: label });
   const cards = await listCards();
   const found = cards.find((item) => item.id === card.id);
   if (!found) throw new ServiceError("Card was not saved.", 500, "server");
@@ -166,29 +200,21 @@ export async function updateCard(id: string, input: CardWrite): Promise<CardDTO>
   const household = await getHousehold();
   const existing = await prisma.creditCard.findFirst({ where: { id, householdId: household.id } });
   if (!existing) throw new ServiceError("Card not found.", 404, "not_found");
-  const issuer = cleanRequired("issuer", input.issuer, "issuer", 60);
-  const nickname = cleanRequired("nickname", input.nickname, "nickname", 60);
-  const last4 = cleanLast4(input.last4);
-  if (!last4) throw fieldError("last4", "Enter the last 4 digits.");
-  const limit = centsAtLeastZero(input.creditLimit, "creditLimit");
-  if (limit <= 0) throw fieldError("creditLimit", "Enter a credit limit greater than zero.");
-  const balance = centsAtLeastZero(input.currentBalance, "currentBalance");
-  const minimum = centsAtLeastZero(input.minimumPayment, "minimumPayment");
-  const statementDay = day(input.statementDay, "statementDay");
-  const dueDay = day(input.dueDay, "dueDay");
+  const issuer = optionalText(input.issuer, 60);
+  const nickname = optionalText(input.nickname, 60);
+  const last4 = requireLast4(input.last4);
+  const property = await propertyFor(household.id, input.propertyId);
+  const statementDay = optionalDay(input.statementDay, "statementDay");
+  const dueDay = optionalDay(input.dueDay, "dueDay");
   await prisma.creditCard.update({
     where: { id },
     data: {
-      propertyId: input.propertyId,
+      propertyId: property.id,
       issuer,
       nickname,
       last4,
-      creditLimit: new Prisma.Decimal(fromCents(limit)),
-      currentBalance: new Prisma.Decimal(fromCents(balance)),
       statementDay,
       dueDay,
-      minimumPayment: new Prisma.Decimal(fromCents(Math.max(minimum, 0))),
-      apr: aprOf(input.apr),
       autopay: Boolean(input.autopay),
       cardholderId: input.cardholderId || null,
     },
@@ -198,17 +224,19 @@ export async function updateCard(id: string, input: CardWrite): Promise<CardDTO>
     if (bill) {
       const today = todayInChicago();
       await updateBill(bill.id, {
-        name: `${nickname} payment`,
+        ...billFields({
+          issuer,
+          nickname,
+          last4,
+          propertyId: property.id,
+          dueDay,
+          statementDay,
+          autopay: Boolean(input.autopay),
+          cardholderId: input.cardholderId || null,
+          today,
+        }),
         payeeId: bill.payeeId,
-        propertyId: input.propertyId,
         categoryId: bill.categoryId,
-        amount: fromCents(Math.max(minimum, 1)),
-        amountKind: "variable",
-        anchorDate: cardDates(today, statementDay, dueDay).nextDue,
-        autopay: Boolean(input.autopay),
-        frequency: "monthly",
-        dayOfMonth: dueDay,
-        notes: `${issuer} ••${last4}`,
         paymentMethodId: bill.paymentMethodId,
         portalUrl: bill.portalUrl,
         reminderDays: bill.reminderDays,
@@ -217,6 +245,15 @@ export async function updateCard(id: string, input: CardWrite): Promise<CardDTO>
         unit: bill.intervalUnit,
         graceDays: bill.graceDays,
       });
+      if (dueDay == null) {
+        const open = await prisma.occurrence.findMany({
+          where: { billId: bill.id, skippedAt: null, payments: { none: { undoneAt: null } } },
+          select: { id: true },
+        });
+        if (open.length > 0) {
+          await prisma.occurrence.deleteMany({ where: { id: { in: open.map((row) => row.id) } } });
+        }
+      }
     }
   }
   const cards = await listCards();

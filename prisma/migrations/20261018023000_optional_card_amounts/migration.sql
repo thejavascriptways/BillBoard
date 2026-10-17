@@ -1,0 +1,8 @@
+-- AlterTable
+ALTER TABLE "CreditCard" ALTER COLUMN "creditLimit" DROP NOT NULL,
+ALTER COLUMN "currentBalance" DROP NOT NULL,
+ALTER COLUMN "minimumPayment" DROP NOT NULL,
+ALTER COLUMN "statementDay" DROP NOT NULL,
+ALTER COLUMN "dueDay" DROP NOT NULL,
+ALTER COLUMN "issuer" SET DEFAULT '',
+ALTER COLUMN "nickname" SET DEFAULT '';

@@ -23,6 +23,14 @@ function dueAfterStatement(statement: string, dueDay: number): string {
   return addMonths(statement, 1, dueDay);
 }
 
+/** Nickname, or "Issuer •••• 1234", or "Card •••• 1234". */
+export function cardDisplayName(issuer: string, nickname: string, last4: string): string {
+  const nick = nickname.trim();
+  if (nick) return nick;
+  const who = issuer.trim() || "Card";
+  return `${who} •••• ${last4}`;
+}
+
 export function cardDates(today: string, statementDay: number, dueDay: number): CardDates {
   const statement = onOrBefore(today, statementDay);
   let due = dueAfterStatement(statement, dueDay);

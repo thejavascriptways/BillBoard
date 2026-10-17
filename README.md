@@ -246,7 +246,7 @@ Step 1 is the Mac shell. Steps 2–11 are the due-date MVP:
 - Bills and payees can be added, edited, duplicated, archived, and deleted. Amounts are fixed, variable, or estimated. Only the last 4 digits of an account are stored.
 - Recurrence covers weekly, every two weeks, monthly (including the last day), quarterly, twice a year, yearly, every N days/weeks/months, and one-time. A single date can be skipped or moved. Weekends can stay, move earlier, or move later.
 - Mark a due date paid, including a partial amount, and undo it. History is on the bill.
-- Credit cards show the next statement date, next due date, balance, and utilization. Each card creates a monthly bill.
+- Credit cards store the last 4 digits. Issuer, nickname, statement day, due day, cardholder, home, and autopay are optional. With no due day, the card does not create a reminder. Balance, limit, minimum, and APR are not collected.
 - The home screen is overdue, due today, the next 7 days, and the next 30 days, plus this month's paid-versus-due totals.
 - Reminders default to 3 days before, 1 day before, and the due day. The menu-bar app checks every few minutes and on wake, shows a macOS notification (Mark paid and Snooze 1 day where the system allows it), and badges the overdue count. A daily summary defaults to 8:00 AM. SMS stays off.
 - Settings exports an AES-256-GCM backup (password, scrypt) and restores it by merge or replace. CSV export covers bills, payments, and cards. CSV import previews the column mapping.

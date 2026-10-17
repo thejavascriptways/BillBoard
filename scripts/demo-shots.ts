@@ -76,17 +76,13 @@ async function main() {
     nickname: "Demo Chase",
     last4: "4421",
     propertyId: personal.id,
-    creditLimit: "8000",
-    currentBalance: "2460",
     statementDay: 15,
     dueDay: 10,
-    minimumPayment: "40",
-    apr: "19.99",
     autopay: false,
   });
   await ensureMonth(today.slice(0, 7));
   const cardEntry = await prisma.monthEntry.findFirst({
-    where: { bill: { name: "Demo Chase payment" }, yearMonth: today.slice(0, 7) },
+    where: { bill: { name: "Demo Chase" }, yearMonth: today.slice(0, 7) },
   });
   if (cardEntry) {
     await prisma.monthEntry.update({

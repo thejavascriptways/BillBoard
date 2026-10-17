@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { cardDates, totalUtilization, utilizationPercent } from "@/core/cards";
+import { cardDates, cardDisplayName, totalUtilization, utilizationPercent } from "@/core/cards";
 import { decryptBackup, encryptBackup } from "@/core/backup-crypto";
 import { guessMapping, mapBillRows, parseCsv } from "@/core/csv-bills";
 import { EventBus } from "@/core/events";
@@ -141,6 +141,12 @@ describe("reminders", () => {
 });
 
 describe("cards", () => {
+  it("names a card from the issuer when the nickname is blank", () => {
+    expect(cardDisplayName("Chase", "", "4421")).toBe("Chase •••• 4421");
+    expect(cardDisplayName("", "", "4421")).toBe("Card •••• 4421");
+    expect(cardDisplayName("Chase", "Sapphire", "4421")).toBe("Sapphire");
+  });
+
   it("computes the next statement, due date, and utilization", () => {
     expect(cardDates("2026-10-17", 15, 10)).toEqual({
       nextStatement: "2026-11-15",

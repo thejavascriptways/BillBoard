@@ -147,12 +147,10 @@ export function DueBoard() {
           </p>
         </div>
         <div className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
-          <p className="text-sm text-muted-foreground">Card utilization</p>
-          <p className="mt-1 text-2xl font-medium">
-            {board.cards.totalUtilization == null ? "No cards" : `${board.cards.totalUtilization}%`}
-          </p>
+          <p className="text-sm text-muted-foreground">Credit cards</p>
+          <p className="mt-1 text-2xl font-medium">{board.cards.items.length}</p>
           <Link href="/cards" className="text-sm text-primary hover:underline">
-            Credit cards
+            Open cards
           </Link>
         </div>
       </div>
