@@ -6,52 +6,89 @@ Dates are calendar days in `America/Chicago`. Amounts are USD. Nothing here conn
 
 ## Local setup
 
-You need Node.js 22+ and Postgres 16.
+These steps are the same on Windows and macOS. You do not install Postgres, and you do not need Docker. The database is a free [Supabase](https://supabase.com) project. Billboard reaches it through Prisma. Leave Supabase Auth off. The family shares one password.
+
+### 1. Install Node.js
+
+Install Node.js 22 or newer from [nodejs.org](https://nodejs.org) (the LTS installer is fine). Quit and reopen the terminal afterward so `node` and `npm` are on your path.
+
+Check the install:
 
 ```bash
-npm install
+node -v
+npm -v
+```
+
+`node -v` should print `v22` or higher.
+
+### 2. Create the free database
+
+1. Sign in at [supabase.com](https://supabase.com/dashboard) and create a project on the free plan. Pick a database password and save it. You will not find it again in the dashboard.
+2. Wait until the project finishes starting. Open **Connect**.
+3. Copy the **transaction** pooler string (port **6543**) and the **session** pooler string (port **5432**, same pooler host). You do not need the anon key or the service role key.
+
+If the database password contains characters such as `@`, `#`, or `%`, replace each one in the URL with its percent-encoding (`@` becomes `%40`, `#` becomes `%23`).
+
+### 3. Create `.env`
+
+In the project folder, copy the example file.
+
+macOS or Linux Terminal:
+
+```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+Windows PowerShell:
 
-- `DATABASE_URL` and `DIRECT_URL` — locally these can be the same URL. On Supabase they are the pooled and session URLs below.
-- `AUTH_SECRET` — `openssl rand -hex 32`. This signs the session cookie. It is not a Supabase secret.
-- `APP_PASSWORD` — the one password the whole family shares. There are no accounts and no roles.
-
-### Database with Docker
-
-```bash
-docker compose up -d
+```powershell
+Copy-Item .env.example .env
 ```
 
-That starts Postgres on port 5432 with user `billboard`, password `billboard`, database `billboard`, which matches `.env.example`.
+Open `.env` in any text editor and set four values:
 
-### Database without Docker
+| Name | What to put |
+| --- | --- |
+| `DATABASE_URL` | The transaction pooler string, port **6543**, with `?pgbouncer=true&connection_limit=1&sslmode=require` on the end. The app uses this while it is running. |
+| `DIRECT_URL` | The session pooler string, port **5432**, with `?sslmode=require` on the end. Do not add `pgbouncer=true`. Migrations use this. |
+| `AUTH_SECRET` | A long random string, at least 16 characters. It signs the login cookie. It is not a Supabase secret. |
+| `APP_PASSWORD` | The one password the whole family will type. There are no accounts and no roles. |
 
-These are the steps used to run Billboard in a plain Ubuntu environment:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y postgresql postgresql-contrib
-sudo pg_ctlcluster 16 main start
-sudo -u postgres psql <<'SQL'
-CREATE ROLE billboard LOGIN PASSWORD 'billboard' CREATEDB;
-CREATE DATABASE billboard OWNER billboard;
-SQL
+```text
+DATABASE_URL="postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&sslmode=require"
+DIRECT_URL="postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres?sslmode=require"
 ```
 
-`CREATEDB` is only so Prisma can create a shadow database during `prisma migrate dev`. Production deploys use `prisma migrate deploy` and do not need it.
+Replace `[PROJECT-REF]`, `[PASSWORD]`, and `[REGION]` with the values from the Connect dialog. The host looks like `aws-0-us-east-1.pooler.supabase.com`.
 
-### Migrate, seed, run
+To make `AUTH_SECRET` on macOS or Linux:
 
 ```bash
+openssl rand -hex 32
+```
+
+On Windows PowerShell:
+
+```powershell
+-join ((1..32 | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) }))
+```
+
+Do not commit `.env`. It holds the database password and the family password.
+
+### 4. Install, create the tables, and run
+
+From the project folder:
+
+```bash
+npm install
 npx prisma migrate deploy
 npm run db:seed
 npm run dev
 ```
 
-Open [http://127.0.0.1:3847](http://127.0.0.1:3847). Anyone in the household signs in with the same `APP_PASSWORD`.
+`prisma migrate deploy` uses `DIRECT_URL` and creates the tables. The seed adds a starter set you can change later. Then open [http://127.0.0.1:3847](http://127.0.0.1:3847). Anyone in the household signs in with `APP_PASSWORD`.
+
+Stop the app with Ctrl+C in that terminal.
 
 `npm run db:seed` creates a starting set you can rename, archive, reorder, or delete in Settings:
 
@@ -67,6 +104,19 @@ npm run db:clear-samples
 ```
 
 Or use **Clear sample expenses** in Settings.
+
+### Optional: Postgres in Docker
+
+If Docker Desktop is already installed, you can skip Supabase for local work. Leave `DATABASE_URL` and `DIRECT_URL` as the values in `.env.example` (they are the same local URL), then:
+
+```bash
+docker compose up -d
+npx prisma migrate deploy
+npm run db:seed
+npm run dev
+```
+
+That starts Postgres on port 5432 with user `billboard`, password `billboard`, and database `billboard`.
 
 ## Scripts
 
