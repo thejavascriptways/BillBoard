@@ -2,14 +2,16 @@ generator client {
   provider = "prisma-client-js"
 }
 
+/// Runtime queries use DATABASE_URL (Supabase transaction pooler).
+/// Migrations use DIRECT_URL (Supabase session pooler, or a direct IPv6 URL).
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
-/// Single household. v1 is one user; the row is here so a later Android client
-/// and a partner invite have a tenant to attach to.
+/// The household ledger. Everyone signs in with the same APP_PASSWORD.
+/// There are no user accounts and no roles.
 model Household {
   id               String            @id @default(cuid())
   name             String
@@ -110,7 +112,8 @@ model Expense {
   @@index([isSample])
 }
 
-/// Later screen: people in the household. No API in v1.
+/// Later screen: family members as names on the ledger (splits, occupancy).
+/// Not logins. No API in v1.
 model Person {
   id          String            @id @default(cuid())
   householdId String

@@ -15,9 +15,9 @@ cp .env.example .env
 
 Edit `.env`:
 
-- `DATABASE_URL` and `DIRECT_URL` — locally these can be the same URL
-- `AUTH_SECRET` — `openssl rand -hex 32`
-- `APP_PASSWORD` — the one password for the app
+- `DATABASE_URL` and `DIRECT_URL` — locally these can be the same URL. On Supabase they are the pooled and session URLs below.
+- `AUTH_SECRET` — `openssl rand -hex 32`. This signs the session cookie. It is not a Supabase secret.
+- `APP_PASSWORD` — the one password the whole family shares. There are no accounts and no roles.
 
 ### Database with Docker
 
@@ -51,7 +51,7 @@ npm run db:seed
 npm run dev
 ```
 
-Open [http://127.0.0.1:3847](http://127.0.0.1:3847). Sign in with `APP_PASSWORD`.
+Open [http://127.0.0.1:3847](http://127.0.0.1:3847). Anyone in the household signs in with the same `APP_PASSWORD`.
 
 `npm run db:seed` creates a starting set you can rename, archive, reorder, or delete in Settings:
 
@@ -81,29 +81,38 @@ Or use **Clear sample expenses** in Settings.
 | `npm run db:seed` | Seed starter properties, categories, payment methods, and sample expenses |
 | `npm run db:clear-samples` | Delete rows marked as samples |
 
-## Deploy on Vercel + Neon (free tier)
+## Deploy on Vercel + Supabase (free tier)
 
-1. Create a [Neon](https://neon.tech) project on the free plan. Copy the **pooled** connection string and the **direct** connection string.
+Postgres is a [Supabase](https://supabase.com) project on the free plan. Prisma is the only database client. Billboard does not use Supabase Auth, the Supabase client, or the anon and service-role keys. The family shares one password (`APP_PASSWORD`). There are no per-person accounts and no roles.
+
+1. Create a Supabase project. In the dashboard, open **Connect** and copy the pooler strings. You do not need to enable Auth.
 2. Push this repo to GitHub (or GitLab) and import it in [Vercel](https://vercel.com) on the Hobby plan. Framework preset: Next.js.
-3. Set environment variables on the Vercel project:
+3. Set these environment variables on the Vercel project. URL-encode special characters in the database password. Replace `[PROJECT-REF]`, `[PASSWORD]`, and `[REGION]` with the values from the Connect dialog (the host looks like `aws-0-us-east-1.pooler.supabase.com`).
 
    | Name | Value |
    | --- | --- |
-   | `DATABASE_URL` | Neon **pooled** URL (`-pooler` host) |
-   | `DIRECT_URL` | Neon **direct** URL (no pooler). Migrations use this. |
+   | `DATABASE_URL` | Shared pooler, **transaction mode**, port **6543**. The running app uses this. Append `?pgbouncer=true&connection_limit=1&sslmode=require`. |
+   | `DIRECT_URL` | Shared pooler, **session mode**, port **5432** on that same pooler host. `prisma migrate deploy` uses this. Append `?sslmode=require`. Do not add `pgbouncer=true`. |
    | `AUTH_SECRET` | `openssl rand -hex 32` |
-   | `APP_PASSWORD` | A long password only you know |
+   | `APP_PASSWORD` | The one password the family shares |
 
-4. Leave the build command as `npm run build`. That runs `prisma migrate deploy` before `next build`, so the free database is migrated on deploy. The database must be reachable from Vercel's build network (Neon is).
-5. Deploy. Open the Vercel URL and sign in with `APP_PASSWORD`.
+   ```text
+   DATABASE_URL="postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&sslmode=require"
+   DIRECT_URL="postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres?sslmode=require"
+   ```
 
-There is no public registration. The password check is the whole login. The session is an HttpOnly cookie. Do not commit `.env`.
+   The direct host `db.[PROJECT-REF].supabase.co:5432` is IPv6-only on the free plan. Vercel builds are IPv4, so migrations should use the session pooler above. Use the direct host only from a machine that has IPv6.
+
+4. Leave the build command as `npm run build`. That runs `prisma migrate deploy` (through `DIRECT_URL`) before `next build`. Prisma Client then queries through `DATABASE_URL`.
+5. Deploy. Open the Vercel URL. Everyone in the household signs in with `APP_PASSWORD`.
+
+There is no public registration and no second login. The password check is the whole login. The session is an HttpOnly cookie. Do not commit `.env`.
 
 On an Android phone, open the site in Chrome and use the menu item **Install app** or **Add to Home screen**. The installed name is Billboard.
 
 ## API
 
-The web app talks to versioned JSON routes under `/api/v1`. A later Android client can use the same routes. Send the session cookie, or sign in with `POST /api/v1/auth/login` and keep the `billboard_session` cookie.
+The web app talks to versioned JSON routes under `/api/v1`. A later Android client can use the same routes and the same shared password. Send the session cookie, or sign in with `POST /api/v1/auth/login` and keep the `billboard_session` cookie. That cookie is the household session, not a user account.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -136,4 +145,4 @@ Errors look like `{ "error": { "code", "message", "fieldErrors"? } }`.
 
 ## Not in this version
 
-Recurring bills, due dates, reminder screens, occupancy history for the January 2027 move, and Schedule E tax exports are intentionally left for later. The database already has tables for people, vehicles, occupancy periods, payer splits, and reminder settings so those screens can be added without a new tenant model. Billboard v1 only records expenses you enter.
+Recurring bills, due dates, reminder screens, occupancy history for the January 2027 move, and Schedule E tax exports are intentionally left for later. The database already has tables for people, vehicles, occupancy periods, payer splits, and reminder settings so those screens can be added without a new tenant model. A person row, when that screen exists, is a name on the ledger. It is not a login and it has no role. Billboard v1 only records expenses the household enters.

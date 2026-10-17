@@ -67,7 +67,7 @@ export function LoginForm() {
           </Button>
         </form>
         <p className="mt-6 text-xs leading-5 text-muted-foreground">
-          Private to this household. No bank logins, and only a card nickname plus last 4 if you want to record how you paid.
+          The household shares one password. No bank logins, and only a card nickname plus last 4 if you want to record how you paid.
         </p>
       </div>
     </main>
