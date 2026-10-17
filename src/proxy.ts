@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { verifySession } from "@/lib/auth";
+import { passwordsMatch, verifySession } from "@/lib/auth";
 import { isPublicAsset, safeNextPath } from "@/lib/paths";
 import { SESSION_COOKIE } from "@/lib/constants";
 
@@ -14,6 +14,12 @@ const PUBLIC_PATHS = new Set([
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   if (pathname.startsWith("/_next/") || isPublicAsset(pathname)) return NextResponse.next();
+
+  const desktopToken = process.env.BILLBOARD_DESKTOP_TOKEN;
+  const desktopHeader = request.headers.get("x-billboard-desktop-token");
+  if (desktopToken && desktopHeader && passwordsMatch(desktopHeader, desktopToken)) {
+    return NextResponse.next();
+  }
 
   const authenticated = verifySession(
     request.cookies.get(SESSION_COOKIE)?.value,

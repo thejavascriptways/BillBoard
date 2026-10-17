@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     default: APP_NAME,
     template: `%s · ${APP_NAME}`,
   },
-  description: "Household expenses, kept by property, category, and payment method.",
+  description: "Bill due dates, credit cards, and household expenses.",
   applicationName: APP_NAME,
   appleWebApp: {
     capable: true,

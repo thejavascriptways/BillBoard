@@ -135,6 +135,18 @@ npm run db:seed
 npm run desktop:dev
 ```
 
+If you already have the desktop app running, stop it, then:
+
+```bash
+git pull
+npm install
+npx prisma migrate deploy
+npm run db:seed
+npm run desktop:dev
+```
+
+`db:seed` updates the three properties and categories. It does not add sample bills. It removes expenses that were marked as samples.
+
 `desktop:dev` compiles the Electron shell and starts the production Next.js server on port 3921. The first window asks you to create a lock password. That password is hashed and stored in BillBoard’s app data, sealed with the macOS Keychain when the system allows it. It is not `APP_PASSWORD`. `APP_PASSWORD` is only for the browser at `npm run dev`.
 
 The menu bar icon stays after you close the window. Open BillBoard, Lock, and Quit are on that icon. In Settings, on this Mac, you can change the idle lock (default 10 minutes) and turn on launch at login. The app also locks when the Mac sleeps or the screen locks.
@@ -226,6 +238,22 @@ Deleting a property, category, or payment method that still has expenses returns
 
 Errors look like `{ "error": { "code", "message", "fieldErrors"? } }`.
 
+## MVP checklist
+
+Step 1 is the Mac shell. Steps 2–11 are the due-date MVP:
+
+- Properties have a type, status, and optional role-change date. Little Elm Home is primary until January 2027, then a rental. Celina Home becomes primary in January 2027. Personal is the tag for bills that are not a home. The header filter applies to the board, calendar, list, and cards.
+- Bills and payees can be added, edited, duplicated, archived, and deleted. Amounts are fixed, variable, or estimated. Only the last 4 digits of an account are stored.
+- Recurrence covers weekly, every two weeks, monthly (including the last day), quarterly, twice a year, yearly, every N days/weeks/months, and one-time. A single date can be skipped or moved. Weekends can stay, move earlier, or move later.
+- Mark a due date paid, including a partial amount, and undo it. History is on the bill.
+- Credit cards show the next statement date, next due date, balance, and utilization. Each card creates a monthly bill.
+- The home screen is overdue, due today, the next 7 days, and the next 30 days, plus this month's paid-versus-due totals.
+- Reminders default to 3 days before, 1 day before, and the due day. The menu-bar app checks every few minutes and on wake, shows a macOS notification (Mark paid and Snooze 1 day where the system allows it), and badges the overdue count. A daily summary defaults to 8:00 AM. SMS stays off.
+- Settings exports an AES-256-GCM backup (password, scrypt) and restores it by merge or replace. CSV export covers bills, payments, and cards. CSV import previews the column mapping.
+- Plugins register on an internal event bus. The sample JSON bills importer lives in `plugins/sample-json-bills` and can be turned off in Settings.
+
+Still later: loans, cash-flow forecasts, payoff planner, bank connections, SQLCipher, email/push/SMS delivery, and signed Mac builds.
+
 ## Not in this version
 
-Step 1 is the Mac shell: lock, Keychain secrets, menu bar, and the expense log you already have. Still later: bills and due dates, recurrence, payments, credit cards, reminders while the window is closed, and a local SQLCipher database. The Supabase tables for people, vehicles, occupancy, payer splits, and reminder settings are already there and have no screens yet. A person row, when that screen exists, is a name on the ledger. It is not a login and it has no role.
+Loans, cash-flow forecasts, a payoff planner, bank connections, receipt files, SQLCipher, and email, push, or SMS delivery. The Supabase tables for people, vehicles, occupancy, and payer splits have no screens yet. A person row is a name on the ledger, not a login.

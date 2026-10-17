@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { DesktopSettings } from "@/components/desktop-settings";
+import { HouseholdSettings } from "@/components/household-settings";
 import { SettingsPanel } from "@/components/settings-panel";
 
 export const metadata: Metadata = {
@@ -10,6 +11,7 @@ export const metadata: Metadata = {
 export default function SettingsPage() {
   return (
     <div className="grid gap-6">
+      <HouseholdSettings />
       <DesktopSettings />
       <SettingsPanel />
     </div>

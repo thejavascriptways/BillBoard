@@ -14,6 +14,11 @@ export const propertyCreateSchema = z.object({
   name: z.string(),
   address: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
+  kind: z.string().nullable().optional(),
+  status: z.string().nullable().optional(),
+  purchaseDate: z.string().nullable().optional(),
+  roleStartsOn: z.string().nullable().optional(),
+  roleBecomes: z.string().nullable().optional(),
 });
 
 export const propertyPatchSchema = z
@@ -22,6 +27,11 @@ export const propertyPatchSchema = z
     address: z.string().nullable().optional(),
     notes: z.string().nullable().optional(),
     archived: z.boolean().optional(),
+    kind: z.string().nullable().optional(),
+    status: z.string().nullable().optional(),
+    purchaseDate: z.string().nullable().optional(),
+    roleStartsOn: z.string().nullable().optional(),
+    roleBecomes: z.string().nullable().optional(),
   })
   .refine((value) => Object.values(value).some((item) => item !== undefined), {
     message: "Nothing to change.",

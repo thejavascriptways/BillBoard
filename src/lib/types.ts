@@ -3,6 +3,11 @@ export type PropertyDTO = {
   name: string;
   address: string | null;
   notes: string | null;
+  kind: "primary" | "rental" | "vacation" | "other";
+  status: "active" | "upcoming" | "archived";
+  purchaseDate: string | null;
+  roleStartsOn: string | null;
+  roleBecomes: "primary" | "rental" | "vacation" | "other" | null;
   sortOrder: number;
   archived: boolean;
   expenseCount: number;

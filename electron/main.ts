@@ -10,6 +10,7 @@ import {
   Menu,
   nativeImage,
   net,
+  Notification,
   powerMonitor,
   safeStorage,
   screen,
@@ -33,8 +34,11 @@ let quitting = false;
 let locked = true;
 let secrets: SecretBundle | null = null;
 let idleTimer: NodeJS.Timeout | null = null;
+let reminderTimer: NodeJS.Timeout | null = null;
+let pendingPath = "/";
+let overdueCount = 0;
 
-type Preferences = { autoLockMinutes: number; openAtLogin: boolean };
+type Preferences = { autoLockMinutes: number; openAtLogin: boolean; backupDir: string };
 
 if (process.env.BILLBOARD_SMOKE === "1" && process.env.BILLBOARD_USER_DATA) {
   app.setPath("userData", process.env.BILLBOARD_USER_DATA);
@@ -92,7 +96,12 @@ function readPreferences(): Preferences {
   return {
     autoLockMinutes: clampAutoLockMinutes(saved?.autoLockMinutes ?? 10),
     openAtLogin: Boolean(saved?.openAtLogin),
+    backupDir: saved?.backupDir || defaultBackupDir(),
   };
+}
+
+function defaultBackupDir(): string {
+  return path.join(app.getPath("documents"), "BillBoard Backups");
 }
 
 function writePreferences(prefs: Preferences): void {
@@ -189,7 +198,9 @@ async function showApp(): Promise<void> {
   if (!mainWindow) return;
   locked = false;
   await establishSession();
-  await mainWindow.loadURL(origin());
+  const next = pendingPath || "/";
+  pendingPath = "/";
+  await mainWindow.loadURL(`${origin()}${next}`);
   mainWindow.show();
   mainWindow.focus();
 }
@@ -211,13 +222,25 @@ function showWindow(): void {
   mainWindow.focus();
 }
 
+async function openBill(billId: string): Promise<void> {
+  pendingPath = `/bills/${billId}`;
+  if (locked || !mainWindow) {
+    showWindow();
+    return;
+  }
+  await openInApp(pendingPath);
+  pendingPath = "/";
+}
+
 async function openInApp(pathname: string): Promise<void> {
   if (!mainWindow || locked) {
+    pendingPath = pathname;
     showWindow();
     return;
   }
   await mainWindow.loadURL(`${origin()}${pathname}`);
   mainWindow.show();
+  mainWindow.focus();
 }
 
 function buildMenu(): void {
@@ -265,19 +288,30 @@ function buildMenu(): void {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-function createTray(): void {
-  const image = nativeImage.createFromPath(trayIconPath());
-  const sized = image.isEmpty() ? image : image.resize({ width: 18, height: 18 });
-  tray = new Tray(sized);
-  tray.setToolTip(APP_TITLE);
+function refreshTray(): void {
+  if (!tray) return;
+  tray.setToolTip(overdueCount > 0 ? `${APP_TITLE} — ${overdueCount} overdue` : APP_TITLE);
   tray.setContextMenu(
     Menu.buildFromTemplate([
+      ...(overdueCount > 0 ? [{ label: `${overdueCount} overdue`, enabled: false } as const] : []),
       { label: "Open BillBoard", click: () => showWindow() },
       { label: "Lock", click: () => void lockNow() },
       { type: "separator" },
       { label: "Quit", click: () => app.quit() },
     ]),
   );
+  try {
+    app.setBadgeCount(overdueCount);
+  } catch {
+    // Linux builds in CI may not have a dock badge.
+  }
+}
+
+function createTray(): void {
+  const image = nativeImage.createFromPath(trayIconPath());
+  const sized = image.isEmpty() ? image : image.resize({ width: 18, height: 18 });
+  tray = new Tray(sized);
+  refreshTray();
   tray.on("click", () => showWindow());
 }
 
@@ -413,6 +447,106 @@ async function startServer(bundle: SecretBundle): Promise<void> {
   await waitForServer();
 }
 
+function readBackupPassword(): string | null {
+  const file = userFile("backup-password.bin");
+  if (!fs.existsSync(file)) return null;
+  try {
+    const value = openSealed(fs.readFileSync(file)).trim();
+    return value.length >= 8 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeBackupPassword(password: string): void {
+  fs.mkdirSync(app.getPath("userData"), { recursive: true });
+  fs.writeFileSync(userFile("backup-password.bin"), seal(password));
+}
+
+function writeBackupFile(filename: string, fileBase64: string): string {
+  const folder = readPreferences().backupDir || defaultBackupDir();
+  fs.mkdirSync(folder, { recursive: true });
+  const target = path.join(folder, path.basename(filename));
+  fs.writeFileSync(target, Buffer.from(fileBase64, "base64"));
+  const files = fs
+    .readdirSync(folder)
+    .filter((name) => name.endsWith(".billboard"))
+    .map((name) => ({ name, time: fs.statSync(path.join(folder, name)).mtimeMs }))
+    .sort((a, b) => b.time - a.time);
+  for (const extra of files.slice(14)) fs.rmSync(path.join(folder, extra.name), { force: true });
+  return target;
+}
+
+async function desktopFetch(pathname: string, body: unknown): Promise<Response> {
+  return net.fetch(`${origin()}${pathname}`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-billboard-desktop-token": desktopToken,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+function showReminder(item: { title: string; body: string; billId: string | null; occurrenceId: string | null }): void {
+  if (!Notification.isSupported()) return;
+  const note = new Notification({
+    title: item.title,
+    body: item.body,
+    actions: item.occurrenceId
+      ? [
+          { type: "button", text: "Mark paid" },
+          { type: "button", text: "Snooze 1 day" },
+        ]
+      : [],
+  });
+  note.on("click", () => {
+    if (item.billId) void openBill(item.billId);
+    else showWindow();
+  });
+  note.on("action", (_event, index) => {
+    if (!item.occurrenceId) return;
+    void desktopFetch("/api/v1/reminders/act", {
+      occurrenceId: item.occurrenceId,
+      action: index === 0 ? "paid" : "snooze",
+    }).catch(() => undefined);
+  });
+  note.show();
+}
+
+async function runMaintenance(): Promise<void> {
+  if (!server || locked === undefined) return;
+  try {
+    const response = await desktopFetch("/api/v1/reminders/dispatch", {});
+    if (response.ok) {
+      const data = (await response.json()) as {
+        overdueCount?: number;
+        notifications?: { title: string; body: string; billId: string | null; occurrenceId: string | null }[];
+      };
+      overdueCount = data.overdueCount ?? 0;
+      refreshTray();
+      for (const item of data.notifications ?? []) showReminder(item);
+    }
+    const password = readBackupPassword();
+    if (password) {
+      const backup = await desktopFetch("/api/v1/backup", { auto: true, password });
+      if (backup.ok) {
+        const file = (await backup.json()) as { skipped?: boolean; filename?: string; fileBase64?: string };
+        if (!file.skipped && file.filename && file.fileBase64) writeBackupFile(file.filename, file.fileBase64);
+      }
+    }
+  } catch (error) {
+    console.error("Reminder check failed.", error);
+  }
+}
+
+function startReminderWatch(): void {
+  if (reminderTimer) clearInterval(reminderTimer);
+  reminderTimer = setInterval(() => void runMaintenance(), 3 * 60 * 1000);
+  powerMonitor.on("resume", () => void runMaintenance());
+  void runMaintenance();
+}
+
 function startIdleWatch(): void {
   if (idleTimer) clearInterval(idleTimer);
   idleTimer = setInterval(() => {
@@ -467,6 +601,7 @@ function registerIpc(): void {
     writePreferences({
       autoLockMinutes: clampAutoLockMinutes(prefs.autoLockMinutes ?? current.autoLockMinutes),
       openAtLogin: prefs.openAtLogin ?? current.openAtLogin,
+      backupDir: current.backupDir,
     });
     return desktopStatus();
   });
@@ -517,6 +652,30 @@ function registerIpc(): void {
       return result(error instanceof Error ? error.message : "Could not start BillBoard.");
     }
   });
+  ipcMain.handle("desktop:backup-status", () => ({
+    folder: readPreferences().backupDir,
+    hasPassword: Boolean(readBackupPassword()),
+  }));
+  ipcMain.handle("desktop:set-backup-password", (_event, password: string) => {
+    if (!password || password.length < 8) return result("Use a backup password of at least 8 characters.");
+    writeBackupPassword(password);
+    return result();
+  });
+  ipcMain.handle("desktop:choose-backup-folder", async () => {
+    const picked = await dialog.showOpenDialog({
+      title: "Backup folder",
+      properties: ["openDirectory", "createDirectory"],
+    });
+    if (picked.canceled || !picked.filePaths[0]) return { ok: false as const, error: "No folder selected." };
+    const current = readPreferences();
+    writePreferences({ ...current, backupDir: picked.filePaths[0] });
+    return { ok: true as const, folder: picked.filePaths[0] };
+  });
+  ipcMain.handle("desktop:write-backup", (_event, input: { filename?: string; fileBase64?: string }) => {
+    if (!input?.filename || !input.fileBase64) return result("Nothing to save.");
+    writeBackupFile(input.filename, input.fileBase64);
+    return result();
+  });
 }
 
 async function boot(): Promise<void> {
@@ -532,6 +691,7 @@ async function boot(): Promise<void> {
   createTray();
   createWindow();
   startIdleWatch();
+  startReminderWatch();
 
   if (!secrets) {
     await mainWindow?.loadFile(staticFile("setup.html"));
@@ -572,7 +732,7 @@ async function runSmoke(): Promise<void> {
   while (Date.now() < deadline) {
     found = Boolean(
       await win.webContents.executeJavaScript(
-        "document.body && document.body.innerText.includes('This month')",
+        "document.body && document.body.innerText.includes('Due dates')",
       ),
     );
     if (found) break;
@@ -586,6 +746,32 @@ async function runSmoke(): Promise<void> {
     app.exit(1);
     return;
   }
+  if (process.env.BILLBOARD_SHOTS === "1") {
+    const shots = [
+      ["/", "screenshot_dashboard.png", "Due dates"],
+      ["/calendar", "screenshot_calendar.png", "Calendar"],
+      ["/bills/new", "screenshot_bill_form.png", "Quick add"],
+      ["/cards", "screenshot_cards.png", "Credit cards"],
+      [process.env.BILLBOARD_SHOT_BILL || "/bills", "screenshot_paid.png", "Payment history"],
+      ["/settings", "screenshot_settings.png", "Reminders"],
+    ] as const;
+    for (const [pathname, filename, marker] of shots) {
+      await win.loadURL(`${origin()}${pathname}`);
+      const until = Date.now() + 15_000;
+      let ready = false;
+      while (Date.now() < until) {
+        ready = Boolean(await win.webContents.executeJavaScript(`document.body && document.body.innerText.includes(${JSON.stringify(marker)})`));
+        if (ready) break;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      fs.writeFileSync(path.join(dir, filename), (await win.capturePage()).toPNG());
+      if (!ready) console.error("Shot missing marker", marker);
+    }
+    await win.webContents.executeJavaScript("document.getElementById('backup')?.scrollIntoView({ block: 'start' })");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    fs.writeFileSync(path.join(dir, "screenshot_backup.png"), (await win.capturePage()).toPNG());
+  }
   app.quit();
 }
 
@@ -594,6 +780,7 @@ app.on("activate", () => showWindow());
 app.on("before-quit", () => {
   quitting = true;
   if (idleTimer) clearInterval(idleTimer);
+  if (reminderTimer) clearInterval(reminderTimer);
   if (server && server.exitCode === null) server.kill("SIGTERM");
 });
 app.on("window-all-closed", () => {

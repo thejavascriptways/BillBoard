@@ -59,6 +59,11 @@ export function SettingsPanel() {
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
   const [notes, setNotes] = useState("");
+  const [kind, setKind] = useState("other");
+  const [homeStatus, setHomeStatus] = useState("active");
+  const [purchaseDate, setPurchaseDate] = useState("");
+  const [roleStartsOn, setRoleStartsOn] = useState("");
+  const [roleBecomes, setRoleBecomes] = useState("");
   const [last4, setLast4] = useState("");
   const [reassignTo, setReassignTo] = useState("");
   const [pending, setPending] = useState(false);
@@ -111,6 +116,11 @@ export function SettingsPanel() {
     setName("");
     setAddress("");
     setNotes("");
+    setKind("other");
+    setHomeStatus("active");
+    setPurchaseDate("");
+    setRoleStartsOn("");
+    setRoleBecomes("");
     setLast4("");
     setReassignTo("");
     setError(null);
@@ -126,6 +136,11 @@ export function SettingsPanel() {
     setName(property.name);
     setAddress(property.address ?? "");
     setNotes(property.notes ?? "");
+    setKind(property.kind);
+    setHomeStatus(property.status);
+    setPurchaseDate(property.purchaseDate ?? "");
+    setRoleStartsOn(property.roleStartsOn ?? "");
+    setRoleBecomes(property.roleBecomes ?? "");
     setEditor({ kind: "property", mode: "edit", item: property });
   }
 
@@ -154,7 +169,17 @@ export function SettingsPanel() {
       return properties.map((property) => ({
         id: property.id,
         title: property.name,
-        detail: [property.address, property.notes].filter(Boolean).join(" · ") || null,
+        detail:
+          [
+            property.kind,
+            property.status,
+            property.roleStartsOn && property.roleBecomes
+              ? `becomes ${property.roleBecomes} ${property.roleStartsOn}`
+              : null,
+            property.address,
+          ]
+            .filter(Boolean)
+            .join(" · ") || null,
         archived: property.archived,
         expenseCount: property.expenseCount,
         sortOrder: property.sortOrder,
@@ -199,13 +224,31 @@ export function SettingsPanel() {
         if (editor.kind === "property" && editor.mode === "create") {
           await api("/api/v1/properties", {
             method: "POST",
-            body: JSON.stringify({ name, address, notes }),
+            body: JSON.stringify({
+              name,
+              address,
+              notes,
+              kind,
+              status: homeStatus,
+              purchaseDate: purchaseDate || null,
+              roleStartsOn: roleStartsOn || null,
+              roleBecomes: roleBecomes || null,
+            }),
           });
           setStatus("Property added.");
         } else if (editor.kind === "property" && editor.mode === "edit") {
           await api(`/api/v1/properties/${editor.item.id}`, {
             method: "PATCH",
-            body: JSON.stringify({ name, address, notes }),
+            body: JSON.stringify({
+              name,
+              address,
+              notes,
+              kind,
+              status: homeStatus,
+              purchaseDate: purchaseDate || null,
+              roleStartsOn: roleStartsOn || null,
+              roleBecomes: roleBecomes || null,
+            }),
           });
           setStatus("Property updated.");
         } else if (editor.kind === "category" && editor.mode === "create") {
@@ -399,7 +442,7 @@ export function SettingsPanel() {
       ) : null}
 
       <Dialog open={editing} onOpenChange={(open) => !open && setEditor(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editorTitle(editor)}</DialogTitle>
             <DialogDescription>{editorDescription(editor)}</DialogDescription>
@@ -425,6 +468,45 @@ export function SettingsPanel() {
                     placeholder="Optional"
                     className="h-12! text-base"
                   />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="editor-kind">Type</Label>
+                    <select id="editor-kind" value={kind} onChange={(event) => setKind(event.target.value)} className="h-12 rounded-lg border border-border bg-background px-3 text-base">
+                      <option value="primary">Primary</option>
+                      <option value="rental">Rental</option>
+                      <option value="vacation">Vacation</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="editor-status">Status</Label>
+                    <select id="editor-status" value={homeStatus} onChange={(event) => setHomeStatus(event.target.value)} className="h-12 rounded-lg border border-border bg-background px-3 text-base">
+                      <option value="active">Active</option>
+                      <option value="upcoming">Upcoming</option>
+                      <option value="archived">Archived</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="editor-purchase">Purchase date</Label>
+                    <Input id="editor-purchase" type="date" value={purchaseDate} onChange={(event) => setPurchaseDate(event.target.value)} className="h-12! text-base" />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="editor-role-date">Role changes on</Label>
+                    <Input id="editor-role-date" type="date" value={roleStartsOn} onChange={(event) => setRoleStartsOn(event.target.value)} className="h-12! text-base" />
+                  </div>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="editor-role">Becomes</Label>
+                  <select id="editor-role" value={roleBecomes} onChange={(event) => setRoleBecomes(event.target.value)} className="h-12 rounded-lg border border-border bg-background px-3 text-base">
+                    <option value="">No scheduled change</option>
+                    <option value="primary">Primary</option>
+                    <option value="rental">Rental</option>
+                    <option value="vacation">Vacation</option>
+                    <option value="other">Other</option>
+                  </select>
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="editor-notes">Notes</Label>

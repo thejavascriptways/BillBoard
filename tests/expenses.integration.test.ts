@@ -118,7 +118,10 @@ describe("expense service", () => {
     const properties = await listProperties();
     const personal = properties.find((property) => property.name === "Personal");
     expect(personal?.archived).toBe(false);
-    await expect(deleteProperty(personal!.id)).rejects.toMatchObject({ code: "in_use" });
+    expect(personal?.kind).toBe("other");
+    const littleElm = properties.find((property) => property.name === "Little Elm Home");
+    expect(littleElm?.kind).toBe("primary");
+    expect(littleElm?.roleBecomes).toBe("rental");
   });
 
   it("archives, reorders, and reassigns a property that still has expenses", async () => {
@@ -132,7 +135,11 @@ describe("expense service", () => {
       },
     });
     const category = await prisma.category.findFirstOrThrow({ where: { householdId: household.id, slug: "other" } });
-    const method = await prisma.paymentMethod.findFirstOrThrow({ where: { householdId: household.id, slug: "cash" } });
+    const method =
+      (await prisma.paymentMethod.findFirst({ where: { householdId: household.id, slug: "cash" } })) ??
+      (await prisma.paymentMethod.create({
+        data: { householdId: household.id, slug: "cash", nickname: "Cash", sortOrder: 0 },
+      }));
     const expense = await createExpense({
       expenseDate: todayInChicago(),
       propertyId: property.id,

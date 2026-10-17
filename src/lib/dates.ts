@@ -92,6 +92,44 @@ export function formatShortMonth(yearMonth: string): string {
   }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
+export function addDays(iso: string, days: number): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  return formatIsoDate(new Date(Date.UTC(year, month - 1, day + days)));
+}
+
+export function addMonths(iso: string, delta: number, dayOfMonth: number | null = null): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1 + delta, 1));
+  const nextYear = shifted.getUTCFullYear();
+  const nextMonth = shifted.getUTCMonth() + 1;
+  const last = lastDayOfMonth(nextYear, nextMonth);
+  const wanted = dayOfMonth === -1 ? last : (dayOfMonth ?? day);
+  const clamped = Math.min(Math.max(wanted, 1), last);
+  return `${nextYear}-${String(nextMonth).padStart(2, "0")}-${String(clamped).padStart(2, "0")}`;
+}
+
+export function compareIso(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+export function weekdayUtc(iso: string): number {
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
+export function chicagoMinutes(now = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: TIMEZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "0";
+  return Number(value("hour")) * 60 + Number(value("minute"));
+}
+
 export function shiftMonth(iso: string, deltaMonths: number, day: number): string | null {
   const [year, month] = iso.split("-").map(Number);
   const shifted = new Date(Date.UTC(year, month - 1 + deltaMonths, 1));

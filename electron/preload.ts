@@ -11,6 +11,10 @@ const bridge = {
   saveSecrets: (input: { databaseUrl: string; directUrl: string; authSecret: string }) =>
     ipcRenderer.invoke("desktop:save-secrets", input),
   importEnv: () => ipcRenderer.invoke("desktop:import-env"),
+  backupStatus: () => ipcRenderer.invoke("desktop:backup-status"),
+  setBackupPassword: (password: string) => ipcRenderer.invoke("desktop:set-backup-password", password),
+  chooseBackupFolder: () => ipcRenderer.invoke("desktop:choose-backup-folder"),
+  writeBackup: (input: { filename: string; fileBase64: string }) => ipcRenderer.invoke("desktop:write-backup", input),
 };
 
 contextBridge.exposeInMainWorld("billboardDesktop", bridge);
