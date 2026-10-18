@@ -115,7 +115,8 @@ export function BillDetail({ billId }: { billId: string }) {
           <p className="text-sm text-muted-foreground">{bill.propertyName}</p>
           <h1 className="font-display text-4xl tracking-tight">{bill.name}</h1>
           <p className="mt-1 text-muted-foreground">
-            {bill.payeeName} · {bill.categoryName} · {formatMoney(bill.amount)} {bill.amountKind} · {bill.frequency}
+            {bill.payeeName ? `${bill.payeeName} · ` : ""}
+            {bill.categoryName} · {bill.amount ? formatMoney(bill.amount) : "No usual amount"} {bill.amountKind} · {bill.frequency}
             {bill.autopay ? " · Autopay" : ""} · {bill.paymentMode.replaceAll("_", " ")}
             {bill.dueOnNote ? ` · ${bill.dueOnNote}` : ""}
           </p>

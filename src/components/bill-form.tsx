@@ -85,10 +85,10 @@ export function BillForm({ billId }: { billId?: string }) {
     api<{ bill: BillDTO }>(`/api/v1/bills/${billId}`)
       .then(({ bill }) => {
         setName(bill.name);
-        setPayeeId(bill.payeeId);
+        setPayeeId(bill.payeeId ?? "");
         setPropertyId(bill.propertyId);
         setCategoryId(bill.categoryId);
-        setAmount(bill.amount);
+        setAmount(bill.amount ?? "");
         setAmountKind(bill.amountKind);
         setAnchorDate(bill.anchorDate);
         setFrequency(bill.frequency);

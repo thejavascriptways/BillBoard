@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Bill" ALTER COLUMN "amount" DROP NOT NULL,
+ALTER COLUMN "payeeId" DROP NOT NULL;

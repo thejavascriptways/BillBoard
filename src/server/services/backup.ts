@@ -183,11 +183,11 @@ export async function restoreBackup(file: Buffer, password: string, mode: "repla
       const data = {
         householdId: id,
         name: String(row.name),
-        payeeId: String(row.payeeId),
+        payeeId: row.payeeId == null || row.payeeId === "" ? null : String(row.payeeId),
         propertyId: String(row.propertyId),
         categoryId: String(row.categoryId),
         amountKind: (row.amountKind as "fixed") ?? "fixed",
-        amount: decimal(row.amount),
+        amount: row.amount == null || row.amount === "" ? null : decimal(row.amount),
         anchorDate: day(row.anchorDate) ?? parseIsoDate("2026-01-01"),
         autopay: Boolean(row.autopay),
         paymentMethodId: (row.paymentMethodId as string | null) ?? null,

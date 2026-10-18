@@ -26,7 +26,7 @@ const KINDS = ["fixed", "variable", "estimated"] as const;
 const UNITS = ["days", "weeks", "months"] as const;
 
 type BillGraph = Bill & {
-  payee: { id: string; name: string };
+  payee: { id: string; name: string } | null;
   property: { id: string; name: string };
   category: { id: string; name: string };
   occurrences: { dueDate: Date; skippedAt: Date | null; payments: { amount: Prisma.Decimal; undoneAt: Date | null }[] }[];
@@ -127,21 +127,22 @@ export function toBillDTO(bill: BillGraph): BillDTO {
     .filter((row) => {
       if (row.skippedAt) return false;
       const paid = row.payments.filter((payment) => !payment.undoneAt).reduce((sum, payment) => sum + asCents(payment.amount), 0);
-      return paid < asCents(bill.amount) || row.payments.length === 0;
+      const expected = bill.amount ? asCents(bill.amount) : 0;
+      return paid < expected || row.payments.length === 0;
     })
     .map((row) => formatIsoDate(row.dueDate))
     .sort();
   return {
     id: bill.id,
     name: bill.name,
-    payeeId: bill.payee.id,
-    payeeName: bill.payee.name,
+    payeeId: bill.payee?.id ?? null,
+    payeeName: bill.payee?.name ?? "",
     propertyId: bill.property.id,
     propertyName: bill.property.name,
     categoryId: bill.category.id,
     categoryName: bill.category.name,
     amountKind: bill.amountKind,
-    amount: bill.amount.toFixed(2),
+    amount: bill.amount ? bill.amount.toFixed(2) : null,
     anchorDate: formatIsoDate(bill.anchorDate),
     autopay: bill.autopay,
     paymentMethodId: bill.paymentMethodId,
@@ -213,7 +214,7 @@ export async function materializeBill(billId: string, horizon: string): Promise<
   const keep = new Set(cycles.map((cycle) => cycle.index));
   for (const cycle of cycles) {
     const existing = bill.occurrences.find((row) => row.cycleIndex === cycle.index);
-    const expected = new Prisma.Decimal(bill.amount.toFixed(2));
+    const expected = new Prisma.Decimal(bill.amount ? bill.amount.toFixed(2) : "0.00");
     if (!existing) {
       await prisma.occurrence.create({
         data: {
@@ -262,13 +263,22 @@ async function ensureHorizon(householdId: string, today: string): Promise<void> 
   }
 }
 
-async function resolvePayee(householdId: string, input: { payeeId?: string | null; payeeName?: string | null; categoryId?: string | null; accountLast4?: string | null }) {
+async function resolvePayee(
+  householdId: string,
+  input: { payeeId?: string | null; payeeName?: string | null; categoryId?: string | null; accountLast4?: string | null },
+  options?: { optional?: boolean },
+) {
   if (input.payeeId) {
     const payee = await prisma.payee.findFirst({ where: { id: input.payeeId, householdId } });
     if (!payee) throw fieldError("payeeId", "Choose a payee.");
     return payee;
   }
-  const name = cleanRequired("payeeName", input.payeeName ?? "", "payee", 80);
+  const trimmed = input.payeeName?.trim() ?? "";
+  if (!trimmed) {
+    if (options?.optional) return null;
+    throw fieldError("payeeName", "Enter a payee.");
+  }
+  const name = cleanRequired("payeeName", trimmed, "payee", 80);
   const existing = await prisma.payee.findFirst({
     where: { householdId, name: { equals: name, mode: "insensitive" } },
   });
@@ -310,8 +320,10 @@ export type BillWrite = {
   accountLast4?: string | null;
   propertyId: string;
   categoryId: string;
-  amount: string | number;
+  amount?: string | number | null;
   amountKind?: string;
+  amountOptional?: boolean;
+  payeeOptional?: boolean;
   anchorDate: string;
   autopay?: boolean;
   paymentMethodId?: string | null;
@@ -358,14 +370,22 @@ function amountCents(input: string | number): number {
   return parsed.cents;
 }
 
+function amountDecimal(input: string | number | null | undefined, optional: boolean): Prisma.Decimal | null {
+  if (input == null || (typeof input === "string" && input.trim() === "")) {
+    if (optional) return null;
+    throw fieldError("amount", "Enter an amount greater than zero.");
+  }
+  return new Prisma.Decimal(money(amountCents(input)));
+}
+
 export async function createBill(input: BillWrite): Promise<BillDTO> {
   const household = await getHousehold();
   const name = cleanRequired("name", input.name, "bill name", 80);
   const property = await requireOpenProperty(household.id, input.propertyId);
   const category = await requireCategory(household.id, input.categoryId);
-  const payee = await resolvePayee(household.id, input);
+  const payee = await resolvePayee(household.id, input, { optional: Boolean(input.payeeOptional) });
   const method = await requireMethod(household.id, input.paymentMethodId);
-  const cents = amountCents(input.amount);
+  const amount = amountDecimal(input.amount, Boolean(input.amountOptional));
   const anchor = requireDate("anchorDate", input.anchorDate);
   const endDate = optionalDate("endDate", input.endDate);
   const endCount = input.endCount == null || input.endCount === 0 ? null : Math.trunc(input.endCount);
@@ -374,11 +394,11 @@ export async function createBill(input: BillWrite): Promise<BillDTO> {
     data: {
       householdId: household.id,
       name,
-      payeeId: payee.id,
+      payeeId: payee?.id ?? null,
       propertyId: property.id,
       categoryId: category.id,
       amountKind: requireKind(input.amountKind ?? "fixed"),
-      amount: new Prisma.Decimal(money(cents)),
+      amount,
       anchorDate: anchor,
       paymentMethodId: method?.id ?? null,
       notes: cleanOptional("notes", input.notes, 500),
@@ -410,18 +430,22 @@ export async function updateBill(id: string, input: BillWrite): Promise<BillDTO>
   const name = cleanRequired("name", input.name, "bill name", 80);
   const property = await requireOpenProperty(household.id, input.propertyId);
   const category = await requireCategory(household.id, input.categoryId);
-  const payee = await resolvePayee(household.id, { ...input, payeeId: input.payeeId ?? bill.payeeId });
+  const payee = await resolvePayee(
+    household.id,
+    input.payeeOptional ? { payeeId: input.payeeId, payeeName: input.payeeName, categoryId: input.categoryId } : { ...input, payeeId: input.payeeId ?? bill.payeeId },
+    { optional: Boolean(input.payeeOptional) },
+  );
   const method = await requireMethod(household.id, input.paymentMethodId);
-  const cents = amountCents(input.amount);
+  const amount = amountDecimal(input.amount, Boolean(input.amountOptional));
   await prisma.bill.update({
     where: { id },
     data: {
       name,
-      payeeId: payee.id,
+      payeeId: payee?.id ?? null,
       propertyId: property.id,
       categoryId: category.id,
       amountKind: requireKind(input.amountKind ?? bill.amountKind),
-      amount: new Prisma.Decimal(money(cents)),
+      amount,
       anchorDate: requireDate("anchorDate", input.anchorDate),
       paymentMethodId: method?.id ?? null,
       notes: cleanOptional("notes", input.notes, 500),
@@ -468,9 +492,11 @@ export async function duplicateBill(id: string): Promise<BillDTO> {
   return createBill({
     name: `Copy of ${bill.name}`.slice(0, 80),
     payeeId: bill.payeeId,
+    payeeOptional: bill.payeeId == null,
     propertyId: bill.propertyId,
     categoryId: bill.categoryId,
-    amount: bill.amount.toFixed(2),
+    amount: bill.amount ? bill.amount.toFixed(2) : "",
+    amountOptional: bill.amount == null,
     amountKind: bill.amountKind,
     anchorDate: formatIsoDate(bill.anchorDate),
     autopay: bill.autopay,
@@ -526,9 +552,9 @@ type OccurrenceLoaded = {
     autopay: boolean;
     graceDays: number;
     archivedAt: Date | null;
-    payeeId: string;
+    payeeId: string | null;
     categoryId: string;
-    payee: { name: string };
+    payee: { name: string } | null;
     category: { name: string };
     property: { name: string };
   };
@@ -550,8 +576,8 @@ function presentOccurrence(row: OccurrenceLoaded, today: string, dueSoonDays: nu
     id: row.id,
     billId: row.billId,
     billName: row.bill.name,
-    payeeId: row.bill.payeeId,
-    payeeName: row.bill.payee.name,
+    payeeId: row.bill.payeeId ?? "",
+    payeeName: row.bill.payee?.name ?? "",
     propertyId: row.propertyId,
     propertyName: row.property.name,
     categoryId: row.bill.categoryId,
@@ -624,6 +650,14 @@ async function loadOccurrence(id: string) {
   return { household, row };
 }
 
+async function ensurePaymentPayee(householdId: string, billId: string, name: string): Promise<string> {
+  const payee = await prisma.payee.create({
+    data: { householdId, name: name.trim().slice(0, 80) || "Utility" },
+  });
+  await prisma.bill.update({ where: { id: billId }, data: { payeeId: payee.id } });
+  return payee.id;
+}
+
 export async function payOccurrence(
   id: string,
   input: { amount?: string | number | null; paidOn?: string | null; paymentMethodId?: string | null; confirmationNumber?: string | null; note?: string | null },
@@ -643,7 +677,7 @@ export async function payOccurrence(
       occurrenceId: row.id,
       billId: row.billId,
       propertyId: row.propertyId,
-      payeeId: row.bill.payeeId,
+      payeeId: row.bill.payeeId ?? (await ensurePaymentPayee(household.id, row.billId, row.bill.name)),
       paidOn,
       amount: new Prisma.Decimal(money(cents)),
       paymentMethodId: method?.id ?? null,

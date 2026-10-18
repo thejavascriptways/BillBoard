@@ -154,8 +154,8 @@ export async function exportBillsCsv(propertyId?: string | null): Promise<string
     ["Name", "Payee", "Amount", "Due date", "Property", "Category", "Frequency", "Notes"],
     bills.map((bill) => [
       bill.name,
-      bill.payee.name,
-      bill.amount.toFixed(2),
+      bill.payee?.name ?? "",
+      bill.amount ? bill.amount.toFixed(2) : "",
       bill.anchorDate.toISOString().slice(0, 10),
       bill.property.name,
       bill.category.name,

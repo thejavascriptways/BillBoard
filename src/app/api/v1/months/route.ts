@@ -19,6 +19,7 @@ export async function GET(request: NextRequest) {
         personId: params.get("personId"),
         paymentMode: params.get("paymentMode"),
         status: params.get("status"),
+        excludeCards: params.get("excludeCards") === "1",
       }),
     );
   } catch (error) {

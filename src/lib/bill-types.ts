@@ -73,14 +73,14 @@ export type PaymentDTO = {
 export type BillDTO = {
   id: string;
   name: string;
-  payeeId: string;
+  payeeId: string | null;
   payeeName: string;
   propertyId: string;
   propertyName: string;
   categoryId: string;
   categoryName: string;
   amountKind: AmountKind;
-  amount: string;
+  amount: string | null;
   anchorDate: string;
   autopay: boolean;
   paymentMethodId: string | null;

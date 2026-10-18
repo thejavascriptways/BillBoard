@@ -82,10 +82,11 @@ export async function ensureMonth(yearMonthInput: string) {
     const reference = bill.paymentMode === "covered" || bill.paymentMode === "paycheck";
     const card = Boolean(bill.creditCard);
     if (!due && !unscheduled && !reference && !card) continue;
+    const usual = bill.amount ? bill.amount.toFixed(2) : null;
     const seed = initialMonthEntry({
       paymentMode: bill.paymentMode,
-      amountKind: bill.amountKind,
-      amount: bill.amount.toFixed(2),
+      amountKind: usual == null || bill.amountKind !== "fixed" ? "variable" : "fixed",
+      amount: usual ?? "0.00",
       isCard: card,
       balanceCents: bill.creditCard?.currentBalance == null ? null : Math.round(Number(bill.creditCard.currentBalance) * 100),
     });
@@ -116,6 +117,7 @@ export async function getChecklist(input: {
   personId?: string | null;
   paymentMode?: string | null;
   status?: string | null;
+  excludeCards?: boolean;
 }) {
   const yearMonth = assertMonth(input.yearMonth);
   await ensureMonth(yearMonth);
@@ -130,9 +132,10 @@ export async function getChecklist(input: {
     include: {
       bill: {
         include: {
-          category: { include: { parent: true } },
-          property: true,
-          person: true,
+      category: { include: { parent: true } },
+      property: true,
+      payee: true,
+      person: true,
           creditCard: { include: { cardholder: true } },
           coveredBy: true,
         },
@@ -147,6 +150,7 @@ export async function getChecklist(input: {
   const rows = entries
     .filter((row) => {
       if (input.propertyId && row.bill.propertyId !== input.propertyId) return false;
+      if (input.excludeCards && row.bill.creditCard) return false;
       if (input.categoryId && row.bill.categoryId !== input.categoryId && row.bill.category.parentId !== input.categoryId) return false;
       const person = row.bill.creditCard?.cardholderId ?? row.bill.personId;
       if (input.personId && person !== input.personId) return false;
@@ -185,6 +189,9 @@ export async function getChecklist(input: {
         categoryName: row.bill.category.name,
         categoryColor: row.bill.category.color,
         groupName: row.bill.category.parent?.name ?? row.bill.category.name,
+        payeeName: row.bill.payee?.name ?? "",
+        amountKind: row.bill.amountKind,
+        usualAmount: row.bill.amount ? row.bill.amount.toFixed(2) : null,
         paymentMode: row.bill.paymentMode as PaymentMode,
         status: row.status as MonthStatus,
         amount,
@@ -192,7 +199,7 @@ export async function getChecklist(input: {
         dueDate,
         statementAmount,
         amountPaid,
-        prompt: row.bill.amountKind !== "fixed" && amount == null && !excludedFromTotals(row.status, row.bill.paymentMode),
+        prompt: amount == null && !excludedFromTotals(row.status, row.bill.paymentMode),
         missing: missingPastDue({ status: row.status, amount, dueDate, today }),
         muted: row.bill.muted,
         personId: row.bill.personId,
@@ -266,7 +273,7 @@ export async function markMonthPaid(
   });
   if (!row) throw new ServiceError("That month was not found.", 404, "not_found");
   await assertOpen(household.id, row.yearMonth);
-  const parsed = parseLedgerAmount(input.amount ?? (row.amount ? row.amount.toFixed(2) : row.bill.amount.toFixed(2)));
+  const parsed = parseLedgerAmount(input.amount ?? (row.amount ? row.amount.toFixed(2) : row.bill.amount ? row.bill.amount.toFixed(2) : ""));
   if ("error" in parsed) throw fieldError("amount", parsed.error);
   const amount = "blank" in parsed ? null : fromCents(parsed.cents);
   const paidOn = input.paidOn && input.paidOn.length > 0 ? input.paidOn : todayInChicago();
@@ -324,6 +331,73 @@ export async function markMonthPaid(
     },
   });
   return { id: saved.id, warnings: review.warnings };
+}
+
+export async function setMonthAmount(id: string, amount: string | null) {
+  const household = await getHousehold();
+  const row = await prisma.monthEntry.findFirst({ where: { id, householdId: household.id }, include: { bill: true } });
+  if (!row) throw new ServiceError("That month was not found.", 404, "not_found");
+  await assertOpen(household.id, row.yearMonth);
+  const parsed = parseLedgerAmount(amount);
+  if ("error" in parsed) throw fieldError("amount", parsed.error);
+  const value = "blank" in parsed ? null : new Prisma.Decimal(fromCents(parsed.cents));
+  await prisma.monthEntry.update({
+    where: { id },
+    data: {
+      amount: value,
+      ...(row.status === "done" ? { amountPaid: value } : {}),
+    },
+  });
+  await prisma.auditLog.create({
+    data: {
+      householdId: household.id,
+      entityType: "bill",
+      entityId: row.billId,
+      action: "amount",
+      summary: `Set ${row.bill.name} ${row.yearMonth} to ${value ? value.toFixed(2) : "blank"}.`,
+    },
+  });
+  return { id, amount: value ? value.toFixed(2) : null };
+}
+
+export async function undoMonthPaid(id: string) {
+  const household = await getHousehold();
+  const row = await prisma.monthEntry.findFirst({ where: { id, householdId: household.id }, include: { bill: true } });
+  if (!row) throw new ServiceError("That month was not found.", 404, "not_found");
+  await assertOpen(household.id, row.yearMonth);
+  const status = row.bill.paymentMode === "auto" ? "pending" : "not_done";
+  await prisma.monthEntry.update({
+    where: { id },
+    data: { status, paidOn: null, amountPaid: null },
+  });
+  await prisma.auditLog.create({
+    data: {
+      householdId: household.id,
+      entityType: "bill",
+      entityId: row.billId,
+      action: "undo",
+      summary: `Cleared the paid mark on ${row.bill.name} for ${row.yearMonth}.`,
+    },
+  });
+  return { id, status };
+}
+
+export async function resyncBillMonths(billId: string) {
+  const household = await getHousehold();
+  const bill = await prisma.bill.findFirst({ where: { id: billId, householdId: household.id } });
+  if (!bill) return;
+  const entries = await prisma.monthEntry.findMany({ where: { billId, householdId: household.id } });
+  for (const entry of entries) {
+    if (entry.status === "done" || entry.status === "skipped" || entry.status === "not_applicable" || entry.status === "included") {
+      continue;
+    }
+    const due = dueInMonth(bill, entry.yearMonth);
+    if (!due) {
+      if (entry.amount == null && !entry.paidOn) await prisma.monthEntry.delete({ where: { id: entry.id } });
+      continue;
+    }
+    await prisma.monthEntry.update({ where: { id: entry.id }, data: { dueDate: parseIsoDate(due) } });
+  }
 }
 
 export async function setMonthStatus(id: string, status: string) {

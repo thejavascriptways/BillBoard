@@ -750,9 +750,11 @@ async function runSmoke(): Promise<void> {
     const shots = [
       ["/", "screenshot_dashboard.png", "This month"],
       ["/calendar", "screenshot_calendar.png", "Calendar"],
+      ["/utilities", "screenshot_utilities.png", "Oncor"],
+      ["/utilities?new=1", "screenshot_utility_form.png", "Utility type"],
+      ["/utilities?pay=1", "screenshot_utility_paid.png", "Paid date"],
       ["/bills/new", "screenshot_bill_form.png", "Quick add"],
       ["/cards?new=1", "screenshot_cards.png", "Last 4"],
-      [process.env.BILLBOARD_SHOT_BILL || "/bills", "screenshot_paid.png", "Payment history"],
       ["/settings", "screenshot_settings.png", "Reminders"],
     ] as const;
     for (const [pathname, filename, marker] of shots) {

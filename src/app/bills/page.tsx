@@ -1,9 +1,5 @@
-import type { Metadata } from "next";
-
-import { BillList } from "@/components/bill-list";
-
-export const metadata: Metadata = { title: "Bills" };
+import { redirect } from "next/navigation";
 
 export default function BillsPage() {
-  return <BillList />;
+  redirect("/utilities");
 }

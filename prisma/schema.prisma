@@ -263,14 +263,15 @@ model Bill {
   householdId      String
   household        Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
   name             String
-  payeeId          String
-  payee            Payee         @relation(fields: [payeeId], references: [id], onDelete: Restrict)
+  payeeId          String?
+  payee            Payee?        @relation(fields: [payeeId], references: [id], onDelete: Restrict)
   propertyId       String
   property         Property      @relation(fields: [propertyId], references: [id], onDelete: Restrict)
   categoryId       String
   category         Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   amountKind       AmountKind    @default(fixed)
-  amount           Decimal       @db.Decimal(12, 2)
+  /// Null means no usual amount. A month row still stores this month's amount separately.
+  amount           Decimal?      @db.Decimal(12, 2)
   anchorDate       DateTime      @db.Date
   autopay          Boolean       @default(false)
   paymentMethodId  String?

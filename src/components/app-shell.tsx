@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, CreditCard, LayoutGrid, List, Plus, Receipt, Settings } from "lucide-react";
+import { CalendarDays, CreditCard, LayoutGrid, Plus, Receipt, Settings, Zap } from "lucide-react";
 import { useEffect } from "react";
 
 import { BillboardLogo } from "@/components/billboard-logo";
@@ -13,7 +13,7 @@ import { cn } from "cn";
 const LINKS = [
   { href: "/", label: "Due", icon: LayoutGrid },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
-  { href: "/bills", label: "Bills", icon: List },
+  { href: "/utilities", label: "Utilities", icon: Zap },
   { href: "/cards", label: "Cards", icon: CreditCard },
   { href: "/expenses", label: "Expenses", icon: Receipt },
   { href: "/spending", label: "Spending", icon: Receipt },
@@ -38,7 +38,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       if (typing || event.metaKey || event.ctrlKey || event.altKey) return;
       if (event.key.toLowerCase() === "n") {
         event.preventDefault();
-        router.push("/bills/new");
+        router.push("/utilities?new=1");
       }
     }
     window.addEventListener("keydown", onKey);
@@ -86,11 +86,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="ml-auto flex items-center gap-2">
                 <PropertySwitcher />
                 <Link
-                  href="/bills/new"
+                  href="/utilities?new=1"
                   className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-coral px-3 text-sm font-semibold text-coral-foreground"
                 >
                   <Plus className="size-4" />
-                  Quick add bill
+                  Add utility
                 </Link>
               </div>
             </header>

@@ -243,7 +243,7 @@ Errors look like `{ "error": { "code", "message", "fieldErrors"? } }`.
 Step 1 is the Mac shell. Steps 2–11 are the due-date MVP:
 
 - Properties have a type, status, and optional role-change date. Little Elm Home is primary until January 2027, then a rental. Celina Home becomes primary in January 2027. Personal is the tag for bills that are not a home. The header filter applies to the board, calendar, list, and cards.
-- Bills and payees can be added, edited, duplicated, archived, and deleted. Amounts are fixed, variable, or estimated. Only the last 4 digits of an account are stored.
+- The Utilities tab lists utility bills for one home and month. Last 4 digits only. Other bills stay available with Show other bills, and the Due tab still tracks all of them.
 - Recurrence covers weekly, every two weeks, monthly (including the last day), quarterly, twice a year, yearly, every N days/weeks/months, and one-time. A single date can be skipped or moved. Weekends can stay, move earlier, or move later.
 - Mark a due date paid, including a partial amount, and undo it. History is on the bill.
 - Credit cards store the last 4 digits. Issuer, nickname, statement day, due day, cardholder, home, and autopay are optional. With no due day, the card does not create a reminder. Balance, limit, minimum, and APR are not collected.
