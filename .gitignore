@@ -21,6 +21,7 @@
 # electron
 /electron-dist/
 /dist/
+.desktop-dev.log
 
 # production
 /build
