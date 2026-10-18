@@ -246,10 +246,21 @@ export function UtilitiesBoard() {
   async function saveUtility() {
     setSaving(true);
     setFormError(null);
+    const propertyId = form.propertyId || (homeId && homeId !== "all" ? homeId : properties.find((property) => property.isActive)?.id ?? "");
+    if (!typeQuery.trim()) {
+      applyDialogSave({ ok: false, message: "Choose a utility type." }, dialogEffects(() => setEditor(false), setFormError));
+      setSaving(false);
+      return;
+    }
+    if (!propertyId) {
+      applyDialogSave({ ok: false, message: "Choose a property." }, dialogEffects(() => setEditor(false), setFormError));
+      setSaving(false);
+      return;
+    }
     const body = {
       categoryId: matchedType?.id ?? null,
       categoryName: matchedType ? null : typeQuery.trim(),
-      propertyId: form.propertyId,
+      propertyId,
       payeeName: form.payeeName,
       dueDay: form.oneTime ? null : form.dueDay,
       dueDate: form.oneTime ? form.dueDate : null,
@@ -568,6 +579,7 @@ export function UtilitiesBoard() {
           <form
             id="utility-form"
             className="grid gap-3"
+            noValidate
             onSubmit={(event) => {
               event.preventDefault();
               void saveUtility();
@@ -593,7 +605,7 @@ export function UtilitiesBoard() {
               </div>
               <div className="grid gap-1">
                 <Label htmlFor="utility-property">Home</Label>
-                <MasterSelect id="utility-property" table="homes" value={form.propertyId} onChange={(value) => setForm({ ...form, propertyId: value })} required />
+                <MasterSelect id="utility-property" table="homes" value={form.propertyId} onChange={(value) => setForm((current) => ({ ...current, propertyId: value }))} required />
               </div>
             </div>
             <label className="flex items-center gap-2 text-sm">
@@ -652,6 +664,7 @@ export function UtilitiesBoard() {
           <form
             id="mark-paid-form"
             className="grid gap-3"
+            noValidate
             onSubmit={(event) => {
               event.preventDefault();
               void markPaid(Boolean(payWarning));
