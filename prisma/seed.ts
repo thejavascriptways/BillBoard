@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import { PrismaClient, type PropertyKind, type PropertyStatus } from "@prisma/client";
 
 import { prisma as sharedPrisma } from "../src/server/db";
+import { ensureLookups } from "../src/server/services/masters";
 
 const PROPERTIES: {
   slug: string;
@@ -142,6 +143,7 @@ export async function seed(client: PrismaClient = sharedPrisma) {
     update: legacyReminders ? { reminderDays: [7, 3, 1, 0] } : {},
   });
 
+  await ensureLookups(client, household.id);
   const cleared = await client.expense.deleteMany({ where: { householdId: household.id, isSample: true } });
   return { household: household.name, samples: 0, cleared: cleared.count };
 }

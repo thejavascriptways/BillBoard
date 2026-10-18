@@ -6,6 +6,7 @@ import { prisma } from "../src/server/db";
 import { createBill, payOccurrence, queryOccurrences } from "../src/server/services/bills";
 import { createCard } from "../src/server/services/cards";
 import { ensureMonth } from "../src/server/services/months";
+import { createMaster } from "../src/server/services/masters";
 import { createPerson } from "../src/server/services/people";
 import { seed } from "../prisma/seed";
 
@@ -79,6 +80,16 @@ async function main() {
     statementDay: 15,
     dueDay: 10,
     autopay: false,
+  });
+  const cottage = await createMaster("homes", { name: "Demo cottage", address: "9 Demo Lane", key: "vacation", status: "active" });
+  await createBill({
+    name: "Demo cottage water",
+    payeeName: "Demo cottage water",
+    propertyId: cottage.id,
+    categoryId: (await category("water-sewer")).id,
+    amount: "22.00",
+    anchorDate: today,
+    frequency: "monthly",
   });
   await ensureMonth(today.slice(0, 7));
   const cardEntry = await prisma.monthEntry.findFirst({

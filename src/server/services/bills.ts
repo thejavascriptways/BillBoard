@@ -799,7 +799,7 @@ export async function listPayees(): Promise<PayeeDTO[]> {
     website: row.website,
     phone: row.phone,
     notes: row.notes,
-    archived: row.archivedAt != null,
+    archived: !row.isActive || row.archivedAt != null,
   }));
 }
 
@@ -823,6 +823,7 @@ export async function savePayee(input: {
     phone: cleanOptional("phone", input.phone, 40),
     notes: cleanOptional("notes", input.notes, 300),
     archivedAt: input.archived ? new Date() : null,
+    isActive: !input.archived,
   };
   const row = input.id
     ? await prisma.payee.update({ where: { id: input.id }, data, include: { category: true } })

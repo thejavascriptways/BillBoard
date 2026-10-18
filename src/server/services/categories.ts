@@ -14,7 +14,7 @@ function toDTO(category: Category, expenseCount: number): CategoryDTO {
     color: category.color,
     parentId: category.parentId,
     sortOrder: category.sortOrder,
-    archived: category.archivedAt != null,
+    archived: !category.isActive || category.archivedAt != null,
     expenseCount,
   };
 }
@@ -99,6 +99,7 @@ export async function updateCategory(
     data: {
       name,
       archivedAt,
+      isActive: archivedAt == null,
       color: input.color === undefined ? existing.color : input.color || "#534C66",
       parentId: input.parentId === undefined ? existing.parentId : input.parentId || null,
     },

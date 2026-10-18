@@ -41,7 +41,7 @@ function toDTO(property: Property, expenseCount: number): PropertyDTO {
     roleStartsOn: property.roleStartsOn ? formatIsoDate(property.roleStartsOn) : null,
     roleBecomes: property.roleBecomes,
     sortOrder: property.sortOrder,
-    archived: property.archivedAt != null || property.status === "archived",
+    archived: !property.isActive || property.archivedAt != null || property.status === "archived",
     expenseCount,
   };
 }
@@ -109,6 +109,7 @@ export async function createProperty(input: {
       roleStartsOn: asDate("roleStartsOn", input.roleStartsOn),
       roleBecomes: input.roleBecomes ? asKind(input.roleBecomes, "other") : null,
       archivedAt: status === "archived" ? new Date() : null,
+      isActive: status !== "archived",
       slug: await uniqueSlug(name, "property", async (slug) => {
         const found = await prisma.property.findUnique({
           where: { householdId_slug: { householdId: household.id, slug } },
@@ -164,6 +165,7 @@ export async function updateProperty(
       address,
       notes,
       archivedAt,
+      isActive: archivedAt == null,
       kind: input.kind === undefined ? existing.kind : asKind(input.kind, existing.kind),
       status,
       purchaseDate: input.purchaseDate === undefined ? existing.purchaseDate : asDate("purchaseDate", input.purchaseDate),

@@ -748,6 +748,9 @@ async function runSmoke(): Promise<void> {
   }
   if (process.env.BILLBOARD_SHOTS === "1") {
     const shots = [
+      ["/configuration?table=homes", "screenshot_config_homes.png", "Homes"],
+      ["/configuration?table=utility-types", "screenshot_config_utilities.png", "Electric"],
+      ["/configuration?table=homes&merge=1", "screenshot_config_merge.png", "Merge into"],
       ["/", "screenshot_dashboard.png", "This month"],
       ["/calendar", "screenshot_calendar.png", "Calendar"],
       ["/utilities", "screenshot_utilities.png", "Oncor"],

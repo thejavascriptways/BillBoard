@@ -67,7 +67,13 @@ export function PropertySwitcher() {
       <select
         aria-label="Property"
         value={ready ? propertyId : "all"}
-        onChange={(event) => setPropertyId(event.target.value)}
+        onChange={(event) => {
+          if (event.target.value === "__new__") {
+            window.location.href = "/configuration?table=homes&add=1";
+            return;
+          }
+          setPropertyId(event.target.value);
+        }}
         className="h-10 min-w-40 rounded-lg border border-white/30 bg-white/10 px-3 text-sm text-white"
       >
         <option value="all" className="text-foreground">
@@ -78,6 +84,7 @@ export function PropertySwitcher() {
             {property.name}
           </option>
         ))}
+        <option value="__new__" className="text-foreground">Add new…</option>
       </select>
     </label>
   );

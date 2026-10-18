@@ -1,6 +1,6 @@
 # BillBoard
 
-BillBoard is a private household ledger for the Mac. It runs on your computer, locks with a password (and Touch ID when the Mac offers it), and keeps the books in your Supabase project. Properties, categories, payment methods, and the expense log work today. Due dates, reminders, and credit cards are later steps.
+BillBoard is a private household ledger for the Mac. It runs on your computer, locks with a password (and Touch ID when the Mac offers it), and keeps the books in your Supabase project. The Due board, Utilities, credit cards, expenses, and spending are in the app. Configuration holds the master lists behind the dropdowns. Settings is for the lock, reminders, backup, and plugins.
 
 Dates are calendar days in `America/Chicago`. Amounts are USD. Nothing here connects to a bank, stores a card number, or moves money.
 

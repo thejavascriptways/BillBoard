@@ -169,7 +169,6 @@ export function HouseholdSettings() {
           Save reminders
         </Button>
       </section>
-      <PeopleSection />
       <section id="backup" className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
         <h2 className="font-medium">Backup</h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -310,45 +309,5 @@ export function HouseholdSettings() {
         </div>
       </section>
     </div>
-  );
-}
-
-function PeopleSection() {
-  const [people, setPeople] = useState<{ id: string; name: string }[]>([]);
-  const [name, setName] = useState("");
-
-  function load() {
-    api<{ people: { id: string; name: string }[] }>("/api/v1/people")
-      .then((data) => setPeople(data.people))
-      .catch(() => setPeople([]));
-  }
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  return (
-    <section className="rounded-2xl bg-card p-4 ring-1 ring-foreground/10">
-      <h2 className="font-medium">People</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Cardholders and medical bills use this shared list. There are no separate profiles.</p>
-      <ul className="mt-3 grid gap-1 text-sm">
-        {people.map((person) => (
-          <li key={person.id}>{person.name}</li>
-        ))}
-      </ul>
-      <form
-        className="mt-3 flex gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void api("/api/v1/people", { method: "POST", body: JSON.stringify({ name }) }).then(() => {
-            setName("");
-            load();
-          });
-        }}
-      >
-        <Input aria-label="Person name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Name" className="h-11!" />
-        <Button type="submit" variant="outline">Add</Button>
-      </form>
-    </section>
   );
 }

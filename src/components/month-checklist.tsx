@@ -78,6 +78,7 @@ export function MonthChecklist() {
   const [month, setMonth] = useState(() => todayInChicago().slice(0, 7));
   const [data, setData] = useState<Checklist | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
+  const [modes, setModes] = useState<{ key: string; name: string; isActive: boolean }[]>([]);
   const [categories, setCategories] = useState<CategoryDTO[]>([]);
   const [categoryId, setCategoryId] = useState("");
   const [personId, setPersonId] = useState("");
@@ -106,6 +107,9 @@ export function MonthChecklist() {
     load(month);
     api<{ people: Person[] }>("/api/v1/people").then((result) => setPeople(result.people)).catch(() => setPeople([]));
     api<{ categories: CategoryDTO[] }>("/api/v1/categories").then((result) => setCategories(result.categories)).catch(() => setCategories([]));
+    api<{ rows: { key: string; name: string; isActive: boolean }[] }>("/api/v1/masters?table=payment-modes")
+      .then((result) => setModes(result.rows))
+      .catch(() => setModes([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- filters and month drive the checklist
   }, [month, propertyId, ready, categoryId, personId, mode, status]);
 
@@ -166,7 +170,9 @@ export function MonthChecklist() {
         </select>
         <select aria-label="Payment mode" value={mode} onChange={(event) => setMode(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-2 text-sm">
           <option value="">All payment modes</option>
-          {Object.entries(MODE_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          {(modes.length > 0 ? modes : Object.entries(MODE_LABEL).map(([key, name]) => ({ key, name, isActive: true })))
+            .filter((item) => item.isActive || item.key === mode)
+            .map((item) => <option key={item.key} value={item.key}>{item.isActive ? item.name : `${item.name} (inactive)`}</option>)}
         </select>
         <select aria-label="Status" value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-2 text-sm">
           <option value="">All statuses</option>

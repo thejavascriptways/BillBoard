@@ -13,7 +13,7 @@ export type PersonDTO = {
 };
 
 function toDTO(person: Person): PersonDTO {
-  return { id: person.id, name: person.name, notes: person.notes, archived: person.archivedAt != null };
+  return { id: person.id, name: person.name, notes: person.notes, archived: !person.isActive || person.archivedAt != null };
 }
 
 export async function listPeople(): Promise<PersonDTO[]> {
@@ -54,7 +54,12 @@ export async function updatePerson(id: string, input: { name?: string; notes?: s
   if (input.archived === false) archivedAt = null;
   const updated = await prisma.person.update({
     where: { id },
-    data: { name, notes: input.notes === undefined ? existing.notes : cleanOptional("notes", input.notes, 200), archivedAt },
+    data: {
+      name,
+      notes: input.notes === undefined ? existing.notes : cleanOptional("notes", input.notes, 200),
+      archivedAt,
+      isActive: archivedAt == null,
+    },
   });
   return toDTO(updated);
 }

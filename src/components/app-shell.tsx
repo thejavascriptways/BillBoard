@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CalendarDays, CreditCard, LayoutGrid, Plus, Receipt, Settings, Zap } from "lucide-react";
+import { CalendarDays, CreditCard, LayoutGrid, Library, Plus, Receipt, Settings, Zap } from "lucide-react";
 import { useEffect } from "react";
 
 import { BillboardLogo } from "@/components/billboard-logo";
@@ -17,6 +17,7 @@ const LINKS = [
   { href: "/cards", label: "Cards", icon: CreditCard },
   { href: "/expenses", label: "Expenses", icon: Receipt },
   { href: "/spending", label: "Spending", icon: Receipt },
+  { href: "/configuration", label: "Configuration", icon: Library },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -102,7 +103,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
           aria-label="Primary"
         >
-          <ul className="grid grid-cols-5">
+          <ul className="grid grid-cols-6">
             {MOBILE.map((link) => {
               const active = isActive(pathname, link.href);
               const Icon = link.icon;

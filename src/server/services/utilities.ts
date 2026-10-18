@@ -107,7 +107,7 @@ export async function utilityCatalog() {
   const group = await ensureUtilityGroup();
   const household = await getHousehold();
   const children = await prisma.category.findMany({
-    where: { householdId: household.id, parentId: group.id, archivedAt: null },
+    where: { householdId: household.id, parentId: group.id, archivedAt: null, isActive: true },
   });
   const rank = new Map(BUILTIN.map((type, index) => [type.slug, index]));
   children.sort((a, b) => (rank.get(a.slug) ?? 100) - (rank.get(b.slug) ?? 100) || a.name.localeCompare(b.name));

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { DesktopSettings } from "@/components/desktop-settings";
 import { HouseholdSettings } from "@/components/household-settings";
-import { SettingsPanel } from "@/components/settings-panel";
 
 export const metadata: Metadata = {
   title: "Settings",
@@ -11,9 +11,12 @@ export const metadata: Metadata = {
 export default function SettingsPage() {
   return (
     <div className="grid gap-6">
+      <p className="text-sm text-muted-foreground">
+        Homes, utility types, categories, providers, and the other lists live in{" "}
+        <Link href="/configuration" className="font-medium text-primary">Configuration</Link>.
+      </p>
       <HouseholdSettings />
       <DesktopSettings />
-      <SettingsPanel />
     </div>
   );
 }

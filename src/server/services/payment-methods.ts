@@ -15,7 +15,7 @@ function toDTO(method: PaymentMethod, expenseCount: number): PaymentMethodDTO {
     last4: method.last4,
     label: paymentMethodLabel(method),
     sortOrder: method.sortOrder,
-    archived: method.archivedAt != null,
+    archived: !method.isActive || method.archivedAt != null,
     expenseCount,
   };
 }
@@ -105,7 +105,7 @@ export async function updatePaymentMethod(
   if (input.archived === false) archivedAt = null;
   const updated = await prisma.paymentMethod.update({
     where: { id },
-    data: { nickname, last4, archivedAt },
+    data: { nickname, last4, archivedAt, isActive: archivedAt == null },
   });
   const usage = await prisma.expense.count({ where: { paymentMethodId: id } });
   return toDTO(updated, usage);

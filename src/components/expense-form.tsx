@@ -3,14 +3,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import { ChoiceSelect } from "@/components/choice-select";
+import { MasterSelect } from "@/components/master-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError, api } from "@/lib/api-client";
 import { todayInChicago } from "@/lib/dates";
-import { archivedChoiceLabel } from "@/lib/labels";
 import type { CategoryDTO, ExpenseDTO, ExpenseInput, PaymentMethodDTO, PropertyDTO } from "@/lib/types";
 
 type FieldErrors = Record<string, string | undefined>;
@@ -81,6 +80,7 @@ export function ExpenseForm({
     if (Object.keys(nextErrors).length > 0) return;
     setPending(true);
     try {
+      await api("/api/v1/masters", { method: "POST", body: JSON.stringify({ table: "payees", name: payee.trim() }) });
       await onSubmit({
         expenseDate,
         propertyId,
@@ -148,18 +148,10 @@ export function ExpenseForm({
       <div className="grid gap-1.5">
         <Label htmlFor="property">Property</Label>
         {properties.some((property) => !property.archived) || propertyId ? (
-          <ChoiceSelect
-            id="property"
-            value={propertyId}
-            onChange={setPropertyId}
-            options={properties
-              .filter((property) => !property.archived || property.id === propertyId)
-              .map((property) => ({ value: property.id, label: archivedChoiceLabel(property.name, property.archived) }))}
-            placeholder="Property"
-          />
+          <MasterSelect id="property" table="homes" value={propertyId} onChange={setPropertyId} className="h-12 w-full rounded-lg border border-border bg-background px-3 text-base" />
         ) : (
           <p className="text-sm text-muted-foreground">
-            <Link href="/settings" className="font-medium text-primary">
+            <Link href="/configuration?table=homes" className="font-medium text-primary">
               Add a property
             </Link>{" "}
             before logging this expense.
@@ -171,18 +163,10 @@ export function ExpenseForm({
       <div className="grid gap-1.5">
         <Label htmlFor="category">Category</Label>
         {categories.some((category) => !category.archived) || categoryId ? (
-          <ChoiceSelect
-            id="category"
-            value={categoryId}
-            onChange={setCategoryId}
-            options={categories
-              .filter((category) => !category.archived || category.id === categoryId)
-              .map((category) => ({ value: category.id, label: archivedChoiceLabel(category.name, category.archived) }))}
-            placeholder="Category"
-          />
+          <MasterSelect id="category" table="categories" value={categoryId} onChange={setCategoryId} className="h-12 w-full rounded-lg border border-border bg-background px-3 text-base" />
         ) : (
           <p className="text-sm text-muted-foreground">
-            <Link href="/settings" className="font-medium text-primary">
+            <Link href="/configuration?table=categories" className="font-medium text-primary">
               Add a category
             </Link>{" "}
             before logging this expense.
@@ -208,24 +192,16 @@ export function ExpenseForm({
       <div className="grid gap-1.5">
         <Label htmlFor="payment-method">Payment method</Label>
         {paymentMethods.some((method) => !method.archived) || paymentMethodId ? (
-          <ChoiceSelect
-            id="payment-method"
-            value={paymentMethodId}
-            onChange={setPaymentMethodId}
-            options={paymentMethods
-              .filter((method) => !method.archived || method.id === paymentMethodId)
-              .map((method) => ({ value: method.id, label: archivedChoiceLabel(method.label, method.archived) }))}
-            placeholder="Payment method"
-          />
+          <MasterSelect id="payment-method" table="payment-methods" value={paymentMethodId} onChange={setPaymentMethodId} className="h-12 w-full rounded-lg border border-border bg-background px-3 text-base" />
         ) : (
           <p className="text-sm text-muted-foreground">
-            <Link href="/settings" className="font-medium text-primary">
+            <Link href="/configuration?table=payment-methods" className="font-medium text-primary">
               Add a payment method
             </Link>{" "}
             before logging this expense.
           </p>
         )}
-        <p className="text-xs text-muted-foreground">Nicknames and last 4 are managed in Settings.</p>
+        <p className="text-xs text-muted-foreground">Nicknames and last 4 are managed in Configuration.</p>
         {fieldErrors.paymentMethodId ? <FieldError message={fieldErrors.paymentMethodId} /> : null}
       </div>
 

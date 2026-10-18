@@ -38,6 +38,8 @@ model Household {
   monthEntries       MonthEntry[]
   ledgerMonths       LedgerMonth[]
   auditLogs          AuditLog[]
+  cardIssuers        CardIssuer[]
+  lookupLabels       LookupLabel[]
 }
 
 model Property {
@@ -55,7 +57,10 @@ model Property {
   /// When this home's role changes. Little Elm becomes a rental on this date.
   roleStartsOn     DateTime?         @db.Date
   roleBecomes      PropertyKind?
+  /// Display key for the property-type list. System keys match `kind`.
+  typeKey          String?
   sortOrder        Int               @default(0)
+  isActive         Boolean           @default(true)
   archivedAt       DateTime?
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
@@ -82,6 +87,7 @@ model Category {
   parent      Category? @relation("CategoryGroup", fields: [parentId], references: [id], onDelete: SetNull)
   children    Category[] @relation("CategoryGroup")
   sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
   archivedAt  DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -103,6 +109,7 @@ model PaymentMethod {
   nickname    String
   last4       String?
   sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
   archivedAt  DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -150,6 +157,7 @@ model Person {
   name        String
   notes       String?
   sortOrder   Int               @default(0)
+  isActive    Boolean           @default(true)
   archivedAt  DateTime?
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
@@ -249,13 +257,49 @@ model Payee {
   website      String?
   phone        String?
   notes        String?
+  sortOrder    Int       @default(0)
+  isActive     Boolean   @default(true)
   archivedAt   DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   bills        Bill[]
   payments     Payment[]
 
+  @@index([householdId, sortOrder])
   @@index([householdId, name])
+}
+
+/// Optional list behind the card issuer type-ahead. Cards still store the name as text.
+model CardIssuer {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  name        String
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([householdId, name])
+  @@index([householdId, sortOrder])
+}
+
+/// Editable labels for system keys (payment modes, property types) and custom property types.
+model LookupLabel {
+  id          String    @id @default(cuid())
+  householdId String
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  table       String
+  key         String
+  label       String
+  sortOrder   Int       @default(0)
+  isActive    Boolean   @default(true)
+  isSystem    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([householdId, table, key])
+  @@index([householdId, table, sortOrder])
 }
 
 model Bill {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { MasterSelect } from "@/components/master-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,21 +12,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { ApiError, api } from "@/lib/api-client";
 import type { BillDTO } from "@/lib/bill-types";
 import { todayInChicago } from "@/lib/dates";
-import type { CategoryDTO, PaymentMethodDTO, PropertyDTO } from "@/lib/types";
-import type { PayeeDTO } from "@/lib/bill-types";
+import type { CategoryDTO, PropertyDTO } from "@/lib/types";
 
 const selectClass = "h-12 w-full rounded-lg border border-border bg-background px-3 text-base";
 
 export function BillForm({ billId }: { billId?: string }) {
   const router = useRouter();
-  const [properties, setProperties] = useState<PropertyDTO[]>([]);
-  const [categories, setCategories] = useState<CategoryDTO[]>([]);
-  const [methods, setMethods] = useState<PaymentMethodDTO[]>([]);
-  const [payees, setPayees] = useState<PayeeDTO[]>([]);
   const [name, setName] = useState("");
   const [payeeId, setPayeeId] = useState("");
-  const [payeeName, setPayeeName] = useState("");
-  const [last4, setLast4] = useState("");
   const [propertyId, setPropertyId] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [amount, setAmount] = useState("");
@@ -47,7 +41,6 @@ export function BillForm({ billId }: { billId?: string }) {
   const [paymentMode, setPaymentMode] = useState("manual");
   const [dueOnNote, setDueOnNote] = useState("");
   const [personId, setPersonId] = useState("");
-  const [people, setPeople] = useState<{ id: string; name: string }[]>([]);
   const [muted, setMuted] = useState(false);
   const [coveredByBillId, setCoveredByBillId] = useState("");
   const [otherBills, setOtherBills] = useState<{ id: string; name: string }[]>([]);
@@ -59,18 +52,10 @@ export function BillForm({ billId }: { billId?: string }) {
     Promise.all([
       api<{ properties: PropertyDTO[] }>("/api/v1/properties"),
       api<{ categories: CategoryDTO[] }>("/api/v1/categories"),
-      api<{ paymentMethods: PaymentMethodDTO[] }>("/api/v1/payment-methods"),
-      api<{ payees: PayeeDTO[] }>("/api/v1/payees"),
-      api<{ people: { id: string; name: string }[] }>("/api/v1/people"),
     ])
-      .then(([propertyData, categoryData, methodData, payeeData, peopleData]) => {
+      .then(([propertyData, categoryData]) => {
         const openProperties = propertyData.properties.filter((item) => !item.archived);
         const openCategories = categoryData.categories.filter((item) => !item.archived);
-        setProperties(openProperties);
-        setCategories(openCategories);
-        setMethods(methodData.paymentMethods.filter((item) => !item.archived));
-        setPayees(payeeData.payees.filter((item) => !item.archived));
-        setPeople(peopleData.people);
         api<{ bills: { id: string; name: string }[] }>("/api/v1/bills")
           .then((data) => setOtherBills(data.bills))
           .catch(() => setOtherBills([]));
@@ -124,8 +109,8 @@ export function BillForm({ billId }: { billId?: string }) {
     const body = {
       name,
       payeeId: payeeId || null,
-      payeeName: payeeId ? null : payeeName,
-      accountLast4: last4 || null,
+      payeeName: null,
+      accountLast4: null,
       propertyId,
       categoryId,
       amount,
@@ -179,44 +164,15 @@ export function BillForm({ billId }: { billId?: string }) {
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Payee" id="bill-payee">
-          <select id="bill-payee" className={selectClass} value={payeeId} onChange={(event) => setPayeeId(event.target.value)}>
-            <option value="">New payee…</option>
-            {payees.map((payee) => (
-              <option key={payee.id} value={payee.id}>
-                {payee.name}
-              </option>
-            ))}
-          </select>
+          <MasterSelect id="bill-payee" table="payees" value={payeeId} onChange={setPayeeId} emptyLabel="Choose a provider" className={selectClass} />
         </Field>
-        {payeeId ? null : (
-          <Field label="New payee name" id="bill-payee-name">
-            <Input id="bill-payee-name" value={payeeName} onChange={(event) => setPayeeName(event.target.value)} className="h-12! text-base" />
-          </Field>
-        )}
       </div>
-      {payeeId ? null : (
-        <Field label="Account last 4" id="bill-last4">
-          <Input id="bill-last4" inputMode="numeric" value={last4} onChange={(event) => setLast4(event.target.value)} placeholder="Optional" className="h-12! text-base" />
-        </Field>
-      )}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Property" id="bill-property">
-          <select id="bill-property" className={selectClass} value={propertyId} onChange={(event) => setPropertyId(event.target.value)} required>
-            {properties.map((property) => (
-              <option key={property.id} value={property.id}>
-                {property.name}
-              </option>
-            ))}
-          </select>
+          <MasterSelect id="bill-property" table="homes" value={propertyId} onChange={setPropertyId} required className={selectClass} />
         </Field>
         <Field label="Category" id="bill-category">
-          <select id="bill-category" className={selectClass} value={categoryId} onChange={(event) => setCategoryId(event.target.value)} required>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
+          <MasterSelect id="bill-category" table="categories" value={categoryId} onChange={setCategoryId} required className={selectClass} />
         </Field>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
@@ -248,14 +204,7 @@ export function BillForm({ billId }: { billId?: string }) {
           </select>
         </Field>
         <Field label="Payment method" id="bill-method">
-          <select id="bill-method" className={selectClass} value={paymentMethodId} onChange={(event) => setPaymentMethodId(event.target.value)}>
-            <option value="">None</option>
-            {methods.map((method) => (
-              <option key={method.id} value={method.id}>
-                {method.label}
-              </option>
-            ))}
-          </select>
+          <MasterSelect id="bill-method" table="payment-methods" value={paymentMethodId} onChange={setPaymentMethodId} emptyLabel="None" className={selectClass} />
         </Field>
       </div>
       {frequency === "every_n" ? (
@@ -289,21 +238,10 @@ export function BillForm({ billId }: { billId?: string }) {
       ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Payment mode" id="bill-mode">
-          <select id="bill-mode" className={selectClass} value={paymentMode} onChange={(event) => setPaymentMode(event.target.value)}>
-            <option value="manual">Manual</option>
-            <option value="auto">Auto paid</option>
-            <option value="check">By check</option>
-            <option value="paycheck">Paid in paycheck</option>
-            <option value="covered">Paid through another bill</option>
-          </select>
+          <MasterSelect id="bill-mode" table="payment-modes" value={paymentMode} onChange={setPaymentMode} valueField="key" creatable={false} className={selectClass} />
         </Field>
         <Field label="Person" id="bill-person">
-          <select id="bill-person" className={selectClass} value={personId} onChange={(event) => setPersonId(event.target.value)}>
-            <option value="">None</option>
-            {people.map((person) => (
-              <option key={person.id} value={person.id}>{person.name}</option>
-            ))}
-          </select>
+          <MasterSelect id="bill-person" table="people" value={personId} onChange={setPersonId} emptyLabel="None" className={selectClass} />
         </Field>
       </div>
       {paymentMode === "covered" ? (

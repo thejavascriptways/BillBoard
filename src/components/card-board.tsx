@@ -4,13 +4,13 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { scopeQuery, usePropertyScope } from "@/components/property-scope";
+import { MasterSelect } from "@/components/master-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, api } from "@/lib/api-client";
 import type { CardDTO } from "@/lib/bill-types";
 import { formatDisplayDate } from "@/lib/dates";
-import type { PropertyDTO } from "@/lib/types";
 
 const empty = {
   issuer: "",
@@ -26,8 +26,8 @@ const empty = {
 export function CardBoard() {
   const { propertyId, ready } = usePropertyScope();
   const [cards, setCards] = useState<CardDTO[]>([]);
-  const [properties, setProperties] = useState<PropertyDTO[]>([]);
-  const [people, setPeople] = useState<{ id: string; name: string }[]>([]);
+  const [people, setPeople] = useState<{ id: string; name: string; archived?: boolean }[]>([]);
+  const [issuers, setIssuers] = useState<string[]>([]);
   const [cardholderId, setCardholderId] = useState("");
   const [form, setForm] = useState(empty);
   const [editing, setEditing] = useState<string | null>(null);
@@ -44,10 +44,8 @@ export function CardBoard() {
   useEffect(() => {
     const openForm = new URLSearchParams(window.location.search).get("new") === "1";
     const timer = openForm ? setTimeout(() => setOpen(true), 0) : undefined;
-    api<{ people: { id: string; name: string }[] }>("/api/v1/people").then((data) => setPeople(data.people)).catch(() => undefined);
-    api<{ properties: PropertyDTO[] }>("/api/v1/properties")
-      .then((data) => setProperties(data.properties.filter((property) => !property.archived)))
-      .catch(() => undefined);
+    api<{ people: { id: string; name: string; archived?: boolean }[] }>("/api/v1/people").then((data) => setPeople(data.people)).catch(() => undefined);
+    api<{ rows: { name: string; isActive: boolean }[] }>("/api/v1/masters?table=issuers&active=1").then((data) => setIssuers(data.rows.map((row) => row.name))).catch(() => undefined);
     return () => {
       if (timer) clearTimeout(timer);
     };
@@ -86,6 +84,10 @@ export function CardBoard() {
       cardholderId: form.cardholderId || null,
     };
     try {
+      const issuerName = form.issuer.trim();
+      if (issuerName && !issuers.some((name) => name.toLowerCase() === issuerName.toLowerCase())) {
+        await api("/api/v1/masters", { method: "POST", body: JSON.stringify({ table: "issuers", name: issuerName }) });
+      }
       if (editing) await api(`/api/v1/cards/${editing}`, { method: "PATCH", body: JSON.stringify(body) });
       else await api("/api/v1/cards", { method: "POST", body: JSON.stringify(body) });
       setOpen(false);
@@ -106,7 +108,7 @@ export function CardBoard() {
         </div>
         <select aria-label="Cardholder" value={cardholderId} onChange={(event) => setCardholderId(event.target.value)} className="h-11 rounded-lg border border-border bg-background px-2 text-sm">
           <option value="">All cardholders</option>
-          {people.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
+          {people.filter((person) => !person.archived || person.id === cardholderId).map((person) => <option key={person.id} value={person.id}>{person.archived ? `${person.name} (inactive)` : person.name}</option>)}
         </select>
         <Button type="button" className="h-11!" onClick={() => { setEditing(null); setForm(empty); setOpen(true); }}>
           Add card
@@ -180,7 +182,10 @@ export function CardBoard() {
           <h2 className="font-medium sm:col-span-2">{editing ? "Edit card" : "New card"}</h2>
           <div className="grid gap-1.5">
             <Label htmlFor="card-issuer">Issuer</Label>
-            <Input id="card-issuer" value={form.issuer} onChange={(event) => setForm((current) => ({ ...current, issuer: event.target.value }))} className="h-12!" />
+            <Input id="card-issuer" list="card-issuers" value={form.issuer} onChange={(event) => setForm((current) => ({ ...current, issuer: event.target.value }))} className="h-12!" placeholder="Type or pick an issuer" />
+            <datalist id="card-issuers">
+              {issuers.map((name) => <option key={name} value={name} />)}
+            </datalist>
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="card-nickname">Nickname</Label>
@@ -200,21 +205,11 @@ export function CardBoard() {
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="card-holder">Cardholder</Label>
-            <select id="card-holder" className="h-12 rounded-lg border border-border bg-background px-3" value={form.cardholderId} onChange={(event) => setForm((current) => ({ ...current, cardholderId: event.target.value }))}>
-              <option value="">None</option>
-              {people.map((person) => (
-                <option key={person.id} value={person.id}>{person.name}</option>
-              ))}
-            </select>
+            <MasterSelect id="card-holder" table="people" value={form.cardholderId} onChange={(value) => setForm((current) => ({ ...current, cardholderId: value }))} emptyLabel="None" className="h-12 w-full rounded-lg border border-border bg-background px-3" />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="card-property">Property</Label>
-            <select id="card-property" className="h-12 rounded-lg border border-border bg-background px-3" value={form.propertyId} onChange={(event) => setForm((current) => ({ ...current, propertyId: event.target.value }))}>
-              <option value="">None</option>
-              {properties.map((property) => (
-                <option key={property.id} value={property.id}>{property.name}</option>
-              ))}
-            </select>
+            <MasterSelect id="card-property" table="homes" value={form.propertyId} onChange={(value) => setForm((current) => ({ ...current, propertyId: value }))} emptyLabel="None" className="h-12 w-full rounded-lg border border-border bg-background px-3" />
           </div>
           <label className="flex items-center gap-2 text-sm sm:col-span-2">
             <input type="checkbox" checked={form.autopay} onChange={(event) => setForm((current) => ({ ...current, autopay: event.target.checked }))} />

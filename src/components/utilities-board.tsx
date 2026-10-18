@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+import { MasterSelect } from "@/components/master-select";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -85,6 +86,7 @@ export function UtilitiesBoard() {
   const pathname = usePathname();
   const [properties, setProperties] = useState<PropertyDTO[]>([]);
   const [types, setTypes] = useState<UtilityType[]>([]);
+  const [providers, setProviders] = useState<string[]>([]);
   const [groupId, setGroupId] = useState("");
   const [homeId, setHomeId] = useState("");
   const [month, setMonth] = useState(() => todayInChicago().slice(0, 7));
@@ -119,12 +121,14 @@ export function UtilitiesBoard() {
     Promise.all([
       api<{ properties: PropertyDTO[] }>("/api/v1/properties"),
       api<{ groupId: string; types: UtilityType[] }>("/api/v1/utilities"),
+      api<{ rows: { name: string }[] }>("/api/v1/masters?table=payees&active=1"),
     ])
-      .then(([propertyData, catalog]) => {
+      .then(([propertyData, catalog, payees]) => {
         if (cancel) return;
         const list = propertyData.properties.filter((property) => !property.archived);
         setProperties(list);
         setTypes(catalog.types);
+        setProviders(payees.rows.map((row) => row.name));
         setGroupId(catalog.groupId);
         const saved = window.localStorage.getItem(HOME_KEY);
         const elm = list.find((property) => property.name === "Little Elm Home");
@@ -233,6 +237,9 @@ export function UtilitiesBoard() {
       notes: form.notes,
     };
     try {
+      if (form.payeeName.trim()) {
+        await api("/api/v1/masters", { method: "POST", body: JSON.stringify({ table: "payees", name: form.payeeName.trim() }) });
+      }
       if (editing) {
         await api(`/api/v1/utilities/${editing}`, { method: "PATCH", body: JSON.stringify(body) });
       } else {
@@ -529,14 +536,14 @@ export function UtilitiesBoard() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="grid gap-1">
                 <Label htmlFor="utility-provider">Provider</Label>
-                <Input id="utility-provider" value={form.payeeName} onChange={(event) => setForm({ ...form, payeeName: event.target.value })} placeholder="Optional" className="h-11!" />
+                <Input id="utility-provider" list="utility-providers" value={form.payeeName} onChange={(event) => setForm({ ...form, payeeName: event.target.value })} placeholder="Optional" className="h-11!" />
+                <datalist id="utility-providers">
+                  {providers.map((name) => <option key={name} value={name} />)}
+                </datalist>
               </div>
               <div className="grid gap-1">
                 <Label htmlFor="utility-property">Home</Label>
-                <select id="utility-property" className={selectClass} value={form.propertyId} onChange={(event) => setForm({ ...form, propertyId: event.target.value })} required>
-                  <option value="">Choose a home</option>
-                  {properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}
-                </select>
+                <MasterSelect id="utility-property" table="homes" value={form.propertyId} onChange={(value) => setForm({ ...form, propertyId: value })} required />
               </div>
             </div>
             <label className="flex items-center gap-2 text-sm">
@@ -569,12 +576,7 @@ export function UtilitiesBoard() {
             </div>
             <div className="grid gap-1">
               <Label htmlFor="utility-mode">Autopay / payment</Label>
-              <select id="utility-mode" className={selectClass} value={form.paymentMode} onChange={(event) => setForm({ ...form, paymentMode: event.target.value })}>
-                <option value="">Not set</option>
-                <option value="auto">Autopay</option>
-                <option value="manual">Manual</option>
-                <option value="check">Check</option>
-              </select>
+              <MasterSelect id="utility-mode" table="payment-modes" value={form.paymentMode} onChange={(value) => setForm({ ...form, paymentMode: value })} valueField="key" creatable={false} emptyLabel="Not set" />
             </div>
             <div className="grid gap-1">
               <Label htmlFor="utility-notes">Notes</Label>
