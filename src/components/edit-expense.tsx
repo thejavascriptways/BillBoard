@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { ExpenseForm } from "@/components/expense-form";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ApiError, api } from "@/lib/api-client";
+import { applyDialogSave, dismissDialog, type DialogActions } from "@/lib/dialog-save";
 import type { ExpenseDTO, ExpenseInput } from "@/lib/types";
 import { cn } from "cn";
 
@@ -25,6 +27,8 @@ export function EditExpense({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteActions = useRef<DialogActions>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,13 +49,27 @@ export function EditExpense({ id }: { id: string }) {
 
   async function remove() {
     setDeleting(true);
+    const effects = {
+      close: () => {
+        setDeleteError(null);
+        setConfirming(false);
+        dismissDialog(deleteActions.current);
+      },
+      refresh: () => router.push("/expenses?deleted=1"),
+      notify: (message: string) => toast.success(message),
+      showError: (message: string) => {
+        setDeleteError(message);
+        setDeleting(false);
+      },
+    };
     try {
       await api(`/api/v1/expenses/${id}`, { method: "DELETE" });
-      router.push("/expenses?deleted=1");
+      applyDialogSave({ ok: true, message: "Expense deleted." }, effects);
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Could not delete that expense.");
-      setDeleting(false);
-      setConfirming(false);
+      applyDialogSave(
+        { ok: false, message: caught instanceof ApiError ? caught.message : "Could not delete that expense." },
+        effects,
+      );
     }
   }
 
@@ -85,18 +103,27 @@ export function EditExpense({ id }: { id: string }) {
         submitLabel="Save changes"
         onSubmit={async (input: ExpenseInput) => {
           await api(`/api/v1/expenses/${id}`, { method: "PATCH", body: JSON.stringify(input) });
-          router.push("/expenses?updated=1");
+          applyDialogSave(
+            { ok: true, message: "Expense saved." },
+            {
+              close: () => router.push("/expenses?updated=1"),
+              refresh: () => router.refresh(),
+              notify: (message) => toast.success(message),
+              showError: setError,
+            },
+          );
         }}
       />
-      <Button type="button" variant="destructive" className="mx-auto h-11! w-full max-w-lg" onClick={() => setConfirming(true)}>
+      <Button type="button" variant="destructive" className="mx-auto h-11! w-full max-w-lg" onClick={() => { setDeleteError(null); setConfirming(true); }}>
         Delete expense
       </Button>
-      <Dialog open={confirming} onOpenChange={setConfirming}>
+      <Dialog actionsRef={deleteActions} open={confirming} onOpenChange={(open) => { if (!open) { setDeleteError(null); setConfirming(false); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete this expense?</DialogTitle>
             <DialogDescription>This removes {expense.payee} for {expense.expenseDate}. It can&apos;t be undone.</DialogDescription>
           </DialogHeader>
+          {deleteError ? <p role="alert" className="text-sm text-destructive">{deleteError}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setConfirming(false)}>
               Cancel

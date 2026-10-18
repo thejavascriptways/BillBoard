@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { MasterSelect } from "@/components/master-select";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError, api } from "@/lib/api-client";
+import { applyDialogSave } from "@/lib/dialog-save";
 import type { BillDTO } from "@/lib/bill-types";
 import { todayInChicago } from "@/lib/dates";
 import type { MasterRow } from "@/lib/masters";
@@ -135,14 +137,28 @@ export function BillForm({ billId }: { billId?: string }) {
       portalUrl,
       reminderDays: reminders,
     };
+    const effects = {
+      close: () => undefined,
+      refresh: () => router.refresh(),
+      notify: (message: string) => toast.success(message),
+      showError: (message: string) => {
+        setError(message);
+        setPending(false);
+      },
+    };
     try {
       const result = billId
         ? await api<{ bill: BillDTO }>(`/api/v1/bills/${billId}`, { method: "PATCH", body: JSON.stringify(body) })
         : await api<{ bill: BillDTO }>("/api/v1/bills", { method: "POST", body: JSON.stringify(body) });
-      router.push(`/bills/${result.bill.id}`);
+      applyDialogSave({ ok: true, message: billId ? "Bill updated." : "Bill saved." }, {
+        ...effects,
+        close: () => router.push(`/bills/${result.bill.id}`),
+      });
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Could not save the bill.");
-      setPending(false);
+      applyDialogSave(
+        { ok: false, message: caught instanceof ApiError ? caught.message : "Could not save the bill." },
+        effects,
+      );
     }
   }
 

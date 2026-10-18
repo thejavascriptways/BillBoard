@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { ApiError, api } from "@/lib/api-client";
+import { applyDialogSave } from "@/lib/dialog-save";
 import type { MasterRow, MasterTableId } from "@/lib/masters";
 
 const selectClass = "h-11 w-full rounded-lg border border-border bg-background px-3 text-sm";
@@ -52,7 +54,20 @@ export function MasterSelect({
   const known = visible.some((row) => field(row) === value);
 
   async function add() {
-    setError(null);
+    const effects = {
+      close: () => {
+        setDraft("");
+        setAdding(false);
+        setError(null);
+      },
+      refresh: () => undefined,
+      notify: (message: string) => toast.success(message),
+      showError: setError,
+    };
+    if (!draft.trim()) {
+      applyDialogSave({ ok: false, message: "Enter a name." }, effects);
+      return;
+    }
     try {
       const result = await api<{ row: MasterRow }>("/api/v1/masters", {
         method: "POST",
@@ -60,10 +75,12 @@ export function MasterSelect({
       });
       setRows((current) => [...current, result.row]);
       onChange(field(result.row));
-      setDraft("");
-      setAdding(false);
+      applyDialogSave({ ok: true, message: `${result.row.name} added.` }, effects);
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Could not add that.");
+      applyDialogSave(
+        { ok: false, message: caught instanceof ApiError ? caught.message : "Could not add that." },
+        effects,
+      );
     }
   }
 
@@ -100,7 +117,7 @@ export function MasterSelect({
           </button>
         </div>
       ) : null}
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
+      {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
     </div>
   );
 }

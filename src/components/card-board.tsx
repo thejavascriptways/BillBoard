@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { scopeQuery, usePropertyScope } from "@/components/property-scope";
 import { MasterSelect } from "@/components/master-select";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, api } from "@/lib/api-client";
+import { applyDialogSave, forgetDialogQuery } from "@/lib/dialog-save";
 import type { CardDTO } from "@/lib/bill-types";
 import { formatDisplayDate } from "@/lib/dates";
 
@@ -33,6 +35,7 @@ export function CardBoard() {
   const [editing, setEditing] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   function load() {
     if (!ready) return;
@@ -57,6 +60,7 @@ export function CardBoard() {
   }, [propertyId, ready]);
 
   function edit(card: CardDTO) {
+    setFormError(null);
     setEditing(card.id);
     setOpen(true);
     setForm({
@@ -72,7 +76,23 @@ export function CardBoard() {
   }
 
   async function save() {
-    setError(null);
+    const effects = {
+      replaceSearch: () => forgetDialogQuery(),
+      close: () => {
+        forgetDialogQuery();
+        setFormError(null);
+        setOpen(false);
+        setEditing(null);
+        setForm(empty);
+      },
+      refresh: () => load(),
+      notify: (message: string) => toast.success(message),
+      showError: setFormError,
+    };
+    if (!form.last4.trim()) {
+      applyDialogSave({ ok: false, message: "Enter the last 4 digits." }, effects);
+      return;
+    }
     const body = {
       issuer: form.issuer,
       nickname: form.nickname,
@@ -90,12 +110,12 @@ export function CardBoard() {
       }
       if (editing) await api(`/api/v1/cards/${editing}`, { method: "PATCH", body: JSON.stringify(body) });
       else await api("/api/v1/cards", { method: "POST", body: JSON.stringify(body) });
-      setOpen(false);
-      setEditing(null);
-      setForm(empty);
-      load();
+      applyDialogSave({ ok: true, message: editing ? "Card updated." : "Card saved.", search: window.location.search }, effects);
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Could not save the card.");
+      applyDialogSave(
+        { ok: false, message: caught instanceof ApiError ? caught.message : "Could not save the card." },
+        effects,
+      );
     }
   }
 
@@ -110,7 +130,7 @@ export function CardBoard() {
           <option value="">All cardholders</option>
           {people.filter((person) => !person.archived || person.id === cardholderId).map((person) => <option key={person.id} value={person.id}>{person.archived ? `${person.name} (inactive)` : person.name}</option>)}
         </select>
-        <Button type="button" className="h-11!" onClick={() => { setEditing(null); setForm(empty); setOpen(true); }}>
+        <Button type="button" className="h-11!" onClick={() => { setEditing(null); setForm(empty); setFormError(null); setOpen(true); }}>
           Add card
         </Button>
       </div>
@@ -215,9 +235,10 @@ export function CardBoard() {
             <input type="checkbox" checked={form.autopay} onChange={(event) => setForm((current) => ({ ...current, autopay: event.target.checked }))} />
             Autopay
           </label>
+          {formError ? <p role="alert" className="text-sm text-destructive sm:col-span-2">{formError}</p> : null}
           <div className="flex gap-2 sm:col-span-2">
             <Button type="submit" className="h-11!">Save card</Button>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => { forgetDialogQuery(); setFormError(null); setOpen(false); }}>Cancel</Button>
           </div>
         </form>
       ) : null}

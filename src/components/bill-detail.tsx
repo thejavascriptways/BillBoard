@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { StatusPill } from "@/components/due-board";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, api } from "@/lib/api-client";
+import { applyDialogSave } from "@/lib/dialog-save";
 import type { BillDTO, OccurrenceDTO, PaymentDTO } from "@/lib/bill-types";
 import { formatDisplayDate, todayInChicago } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
@@ -62,7 +64,20 @@ export function BillDetail({ billId }: { billId: string }) {
   }, [billId]);
 
   async function pay() {
-    setError(null);
+    const effects = {
+      close: () => {
+        setConfirmation("");
+        setNote("");
+        setMessage(null);
+      },
+      refresh: () => load(),
+      notify: (text: string) => toast.success(text),
+      showError: setError,
+    };
+    if (!amount.trim()) {
+      applyDialogSave({ ok: false, message: "Enter the amount that was paid." }, effects);
+      return;
+    }
     try {
       await api(`/api/v1/occurrences/${target}/pay`, {
         method: "POST",
@@ -74,12 +89,12 @@ export function BillDetail({ billId }: { billId: string }) {
           note: note || null,
         }),
       });
-      setMessage("Payment recorded.");
-      setConfirmation("");
-      setNote("");
-      load();
+      applyDialogSave({ ok: true, message: "Marked paid." }, effects);
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Could not record the payment.");
+      applyDialogSave(
+        { ok: false, message: caught instanceof ApiError ? caught.message : "Could not record the payment." },
+        effects,
+      );
     }
   }
 

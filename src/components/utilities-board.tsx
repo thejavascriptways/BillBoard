@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 
 import { MasterSelect } from "@/components/master-select";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, api } from "@/lib/api-client";
+import { applyDialogSave, dismissDialog, forgetDialogQuery, type DialogActions, type DialogSaveEffects } from "@/lib/dialog-save";
 import { defaultHomeId } from "@/lib/homes";
 import type { MasterRow } from "@/lib/masters";
 import type { BillDTO } from "@/lib/bill-types";
@@ -114,6 +116,9 @@ export function UtilitiesBoard() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const payOpened = useRef(false);
   const newOpened = useRef(false);
+  const editorActions = useRef<DialogActions>(null);
+  const payActions = useRef<DialogActions>(null);
+  const deleteActions = useRef<DialogActions>(null);
 
   const homeName = homeId === "all" ? "All homes" : properties.find((property) => property.id === homeId)?.name ?? "Home";
 
@@ -208,6 +213,25 @@ export function UtilitiesBoard() {
     setReloadKey((value) => value + 1);
   }
 
+  function dialogEffects(close: () => void, showError: (message: string) => void): DialogSaveEffects {
+    return {
+      replaceSearch: () => {
+        newOpened.current = true;
+        payOpened.current = true;
+        forgetDialogQuery();
+      },
+      close: () => {
+        newOpened.current = true;
+        payOpened.current = true;
+        forgetDialogQuery();
+        close();
+      },
+      refresh,
+      notify: (message) => toast.success(message),
+      showError,
+    };
+  }
+
   const visible = rows;
   const cents = visible.reduce(
     (sum, row) => {
@@ -246,10 +270,19 @@ export function UtilitiesBoard() {
       }
       const catalog = await api<{ rows: MasterRow[] }>("/api/v1/masters?table=utility-types&active=1");
       setTypes(catalog.rows.map((row) => ({ id: row.id, name: row.name })));
-      setEditor(false);
-      refresh();
+      applyDialogSave(
+        { ok: true, message: editing ? "Utility updated." : "Utility saved.", search: window.location.search },
+        dialogEffects(() => {
+          setFormError(null);
+          setEditor(false);
+          dismissDialog(editorActions.current);
+        }, setFormError),
+      );
     } catch (caught) {
-      setFormError(caught instanceof ApiError ? caught.message : "Could not save the utility.");
+      applyDialogSave(
+        { ok: false, message: caught instanceof ApiError ? caught.message : "Could not save the utility." },
+        dialogEffects(() => setEditor(false), setFormError),
+      );
     } finally {
       setSaving(false);
     }
@@ -299,24 +332,31 @@ export function UtilitiesBoard() {
 
   async function markPaid(confirm: boolean) {
     if (!payRow) return;
+    const effects = dialogEffects(() => {
+      setPayError(null);
+      setPayRow(null);
+      dismissDialog(payActions.current);
+    }, setPayError);
     if (!payAmount.trim()) {
-      setPayError("Enter the amount that was paid.");
+      applyDialogSave({ ok: false, message: "Enter the amount that was paid." }, effects);
       return;
     }
-    setPayError(null);
     try {
       await api(`/api/v1/months/${payRow.id}`, {
         method: "POST",
         body: JSON.stringify({ amount: payAmount, paidOn: payDate, confirm }),
       });
-      setPayRow(null);
-      refresh();
+      applyDialogSave({ ok: true, message: "Marked paid.", search: window.location.search }, effects);
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 409) {
         setPayWarning(caught.message);
+        setPayError(caught.message);
         return;
       }
-      setPayError(caught instanceof ApiError ? caught.message : "Could not mark this paid.");
+      applyDialogSave(
+        { ok: false, message: caught instanceof ApiError ? caught.message : "Could not mark this paid." },
+        effects,
+      );
     }
   }
 
@@ -332,25 +372,37 @@ export function UtilitiesBoard() {
 
   async function removeUtility() {
     if (!deleteRow) return;
-    setDeleteError(null);
+    const effects = dialogEffects(() => {
+      setDeleteError(null);
+      setDeleteRow(null);
+      dismissDialog(deleteActions.current);
+    }, setDeleteError);
     try {
       await api(`/api/v1/bills/${deleteRow.billId}`, { method: "DELETE" });
-      setDeleteRow(null);
-      refresh();
+      applyDialogSave({ ok: true, message: "Utility deleted.", search: window.location.search }, effects);
     } catch (caught) {
-      setDeleteError(caught instanceof ApiError ? caught.message : "Could not delete it.");
+      applyDialogSave(
+        { ok: false, message: caught instanceof ApiError ? caught.message : "Could not delete it." },
+        effects,
+      );
     }
   }
 
   async function archiveUtility() {
     if (!deleteRow) return;
-    setDeleteError(null);
+    const effects = dialogEffects(() => {
+      setDeleteError(null);
+      setDeleteRow(null);
+      dismissDialog(deleteActions.current);
+    }, setDeleteError);
     try {
       await api("/api/v1/bills/bulk", { method: "POST", body: JSON.stringify({ ids: [deleteRow.billId], archived: true }) });
-      setDeleteRow(null);
-      refresh();
+      applyDialogSave({ ok: true, message: "Utility archived.", search: window.location.search }, effects);
     } catch (caught) {
-      setDeleteError(caught instanceof ApiError ? caught.message : "Could not archive it.");
+      applyDialogSave(
+        { ok: false, message: caught instanceof ApiError ? caught.message : "Could not archive it." },
+        effects,
+      );
     }
   }
 
@@ -507,7 +559,7 @@ export function UtilitiesBoard() {
         })}
       </ul>
 
-      <Dialog open={editor} onOpenChange={setEditor}>
+      <Dialog actionsRef={editorActions} open={editor} onOpenChange={(open) => { if (!open) { newOpened.current = true; forgetDialogQuery(); setEditor(false); } }}>
         <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? "Edit utility" : "Add utility"}</DialogTitle>
@@ -589,7 +641,7 @@ export function UtilitiesBoard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(payRow)} onOpenChange={(open) => { if (!open) setPayRow(null); }}>
+      <Dialog actionsRef={payActions} open={Boolean(payRow)} onOpenChange={(open) => { if (!open) { payOpened.current = true; forgetDialogQuery(); setPayRow(null); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Mark paid</DialogTitle>
@@ -623,7 +675,7 @@ export function UtilitiesBoard() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(deleteRow)} onOpenChange={(open) => { if (!open) setDeleteRow(null); }}>
+      <Dialog actionsRef={deleteActions} open={Boolean(deleteRow)} onOpenChange={(open) => { if (!open) { forgetDialogQuery(); setDeleteError(null); setDeleteRow(null); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Delete {deleteRow?.groupName === "Utilities" ? "utility" : "bill"}?</DialogTitle>

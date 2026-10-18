@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import { usePropertyScope } from "@/components/property-scope";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError, api } from "@/lib/api-client";
+import { applyDialogSave } from "@/lib/dialog-save";
 import { addMonths, formatLongMonth, todayInChicago } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import type { MasterRow } from "@/lib/masters";
@@ -244,18 +246,31 @@ function ChecklistRow({ row, readOnly, onChange }: { row: Row; readOnly: boolean
   const grey = row.band === "reference" || row.excluded;
 
   async function pay() {
-    setMessage(null);
+    const effects = {
+      close: () => {
+        setMessage(null);
+        setOpen(false);
+      },
+      refresh: onChange,
+      notify: (text: string) => toast.success(text),
+      showError: setMessage,
+    };
+    if (!amount.trim()) {
+      applyDialogSave({ ok: false, message: "Enter the amount that was paid." }, effects);
+      return;
+    }
     try {
       await api(`/api/v1/months/${row.id}`, {
         method: "POST",
         body: JSON.stringify({ amount, paidOn, confirm }),
       });
-      setOpen(false);
-      onChange();
+      applyDialogSave({ ok: true, message: "Marked paid." }, effects);
     } catch (caught) {
-      const text = caught instanceof ApiError ? caught.message : "Could not mark this paid.";
       if (caught instanceof ApiError && caught.status === 409) setConfirm(true);
-      setMessage(text);
+      applyDialogSave(
+        { ok: false, message: caught instanceof ApiError ? caught.message : "Could not mark this paid." },
+        effects,
+      );
     }
   }
 
@@ -293,7 +308,7 @@ function ChecklistRow({ row, readOnly, onChange }: { row: Row; readOnly: boolean
           <Input aria-label="Date paid" type="date" value={paidOn} onChange={(event) => setPaidOn(event.target.value)} className="h-10!" />
           <Button type="button" onClick={() => void pay()}>{confirm ? "Confirm and save" : "Save"}</Button>
           {confirm ? <p className="text-xs text-muted-foreground sm:col-span-3">Confirm to save despite the warning.</p> : null}
-          {message ? <p className="text-xs text-destructive sm:col-span-3">{message}</p> : null}
+          {message ? <p role="alert" className="text-xs text-destructive sm:col-span-3">{message}</p> : null}
         </div>
       ) : null}
     </li>

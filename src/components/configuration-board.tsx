@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, api } from "@/lib/api-client";
+import { applyDialogSave, dismissDialog, forgetDialogQuery, masterDialogTitle, masterNoun, savedToast, type DialogActions, type DialogSaveEffects } from "@/lib/dialog-save";
 import { MASTER_TABLES, type MasterRow, type MasterTableId } from "@/lib/masters";
 import { cn } from "cn";
 
@@ -40,13 +42,22 @@ export function ConfigurationBoard() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
   const [editor, setEditor] = useState<MasterRow | "new" | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
   const [remove, setRemove] = useState<MasterRow | null>(null);
   const [intoId, setIntoId] = useState("");
-  const [message, setMessage] = useState<string | null>(null);
+  const editorActions = useRef<DialogActions>(null);
+  const removeActions = useRef<DialogActions>(null);
+  const allowQueryOpen = useRef(true);
 
   const meta = MASTER_TABLES.find((item) => item.id === table)!;
+
+  function blockQueryReopen() {
+    allowQueryOpen.current = false;
+    forgetDialogQuery();
+  }
 
   function load(next = table) {
     const params = new URLSearchParams(window.location.search);
@@ -54,6 +65,8 @@ export function ConfigurationBoard() {
       .then((data) => {
         setRows(data.rows);
         setError(null);
+        // A refresh after Save must not honor ?add=1 / ?merge=1. Those flags are how this dialog was staying open.
+        if (!allowQueryOpen.current) return;
         if (params.get("merge") === "1") {
           const named = data.rows.find((row) => row.name === "Demo cottage") ?? data.rows.find((row) => row.usage > 0) ?? data.rows[0];
           if (named) {
@@ -63,11 +76,43 @@ export function ConfigurationBoard() {
         }
         if (params.get("add") === "1") {
           setDraft(emptyDraft());
+          setFormError(null);
           setEditor("new");
         }
       })
       .catch((caught: unknown) => setError(caught instanceof ApiError ? caught.message : "Could not load this list."))
       .finally(() => setLoading(false));
+  }
+
+  function editorEffects(): DialogSaveEffects {
+    return {
+      replaceSearch: () => blockQueryReopen(),
+      close: () => {
+        blockQueryReopen();
+        setFormError(null);
+        setEditor(null);
+        dismissDialog(editorActions.current);
+      },
+      refresh: () => load(),
+      notify: (message) => toast.success(message),
+      showError: setFormError,
+    };
+  }
+
+  function removeEffects(success: string): DialogSaveEffects {
+    return {
+      replaceSearch: () => blockQueryReopen(),
+      close: () => {
+        blockQueryReopen();
+        setRemoveError(null);
+        setRemove(null);
+        dismissDialog(removeActions.current);
+        toast.success(success);
+      },
+      refresh: () => load(),
+      notify: () => undefined,
+      showError: setRemoveError,
+    };
   }
 
   useEffect(() => {
@@ -83,15 +128,18 @@ export function ConfigurationBoard() {
   }, []);
 
   function choose(next: MasterTableId) {
+    allowQueryOpen.current = false;
     setTable(next);
     setQuery("");
     setRemove(null);
+    setEditor(null);
     setLoading(true);
-    load(next);
     const url = new URL(window.location.href);
     url.searchParams.set("table", next);
+    url.searchParams.delete("add");
     url.searchParams.delete("merge");
-    window.history.replaceState(null, "", url.pathname + url.search);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+    load(next);
   }
 
   const shown = rows.filter((row) => {
@@ -111,11 +159,16 @@ export function ConfigurationBoard() {
       key: row.key,
       last4: row.last4 ?? "",
     });
+    setFormError(null);
     setEditor(row);
   }
 
   async function save() {
-    setError(null);
+    const effects = editorEffects();
+    if (!draft.name.trim()) {
+      applyDialogSave({ ok: false, message: "Enter a name." }, effects);
+      return;
+    }
     const body = {
       table,
       name: draft.name,
@@ -133,10 +186,9 @@ export function ConfigurationBoard() {
       } else {
         await api("/api/v1/masters", { method: "POST", body: JSON.stringify(body) });
       }
-      setEditor(null);
-      load();
+      applyDialogSave({ ok: true, message: savedToast(masterNoun(table)), search: window.location.search }, effects);
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Could not save.");
+      applyDialogSave({ ok: false, message: caught instanceof ApiError ? caught.message : "Could not save." }, effects);
     }
   }
 
@@ -154,37 +206,43 @@ export function ConfigurationBoard() {
 
   async function confirmDelete() {
     if (!remove) return;
-    setError(null);
+    const effects = removeEffects(`${remove.name} deleted.`);
     try {
       await api("/api/v1/masters", { method: "POST", body: JSON.stringify({ table, action: "delete", id: remove.id }) });
-      setRemove(null);
-      load();
+      applyDialogSave({ ok: true, message: `${remove.name} deleted.`, search: window.location.search }, effects);
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Could not delete it.");
+      applyDialogSave({ ok: false, message: caught instanceof ApiError ? caught.message : "Could not delete it." }, effects);
     }
   }
 
   async function merge() {
     if (!remove || !intoId) return;
-    setError(null);
     try {
       const result = await api<{ moved: number; deleted: boolean }>("/api/v1/masters", {
         method: "POST",
         body: JSON.stringify({ table, action: "merge", id: remove.id, intoId }),
       });
-      setMessage(result.deleted ? `Moved ${result.moved} records and removed the old value.` : `Moved ${result.moved} records. This system value stays on the list.`);
-      setRemove(null);
-      load();
+      const message = result.deleted
+        ? `Moved ${result.moved} records and removed the old value.`
+        : `Moved ${result.moved} records. This system value stays on the list.`;
+      applyDialogSave({ ok: true, message, search: window.location.search }, removeEffects(message));
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Could not merge.");
+      applyDialogSave(
+        { ok: false, message: caught instanceof ApiError ? caught.message : "Could not merge." },
+        removeEffects(""),
+      );
     }
   }
 
   async function makeInactive() {
     if (!remove) return;
-    await api("/api/v1/masters", { method: "POST", body: JSON.stringify({ table, action: "active", id: remove.id, isActive: false }) });
-    setRemove(null);
-    load();
+    const effects = removeEffects(`${remove.name} is now inactive.`);
+    try {
+      await api("/api/v1/masters", { method: "POST", body: JSON.stringify({ table, action: "active", id: remove.id, isActive: false }) });
+      applyDialogSave({ ok: true, message: `${remove.name} is now inactive.`, search: window.location.search }, effects);
+    } catch (caught) {
+      applyDialogSave({ ok: false, message: caught instanceof ApiError ? caught.message : "Could not make it inactive." }, effects);
+    }
   }
 
   return (
@@ -222,11 +280,10 @@ export function ConfigurationBoard() {
             )}
           </div>
           {meta.creatable ? (
-            <Button type="button" className="bg-brand text-white" onClick={() => { setDraft(emptyDraft()); setEditor("new"); }}>Add</Button>
+            <Button type="button" className="bg-brand text-white" onClick={() => { setDraft(emptyDraft()); setFormError(null); setEditor("new"); }}>Add</Button>
           ) : null}
         </div>
         <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search ${meta.label.toLowerCase()}`} aria-label="Search this list" className="h-11!" />
-        {message ? <p className="text-sm text-primary">{message}</p> : null}
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         {loading ? <div className="h-40 animate-pulse rounded-2xl bg-muted" /> : null}
         {!loading && shown.length === 0 ? <p className="text-sm text-muted-foreground">Nothing in this list yet.</p> : null}
@@ -258,7 +315,7 @@ export function ConfigurationBoard() {
               {meta.system ? null : (
                 <div className="flex gap-2">
                   <Button type="button" variant="outline" size="sm" onClick={() => openEdit(row)}>Edit</Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => { setIntoId(rows.find((item) => item.id !== row.id && item.isActive)?.id ?? ""); setRemove(row); }}>Delete</Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => { setRemoveError(null); setIntoId(rows.find((item) => item.id !== row.id && item.isActive)?.id ?? ""); setRemove(row); }}>Delete</Button>
                 </div>
               )}
             </li>
@@ -266,10 +323,10 @@ export function ConfigurationBoard() {
         </ul>
       </section>
 
-      <Dialog open={editor != null} onOpenChange={(open) => { if (!open) setEditor(null); }}>
+      <Dialog actionsRef={editorActions} open={editor != null} onOpenChange={(open) => { if (!open) { blockQueryReopen(); setFormError(null); setEditor(null); } }}>
         <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editor === "new" ? `Add ${meta.label.toLowerCase()}` : `Edit ${meta.label.toLowerCase()}`}</DialogTitle>
+            <DialogTitle>{editor === "new" ? masterDialogTitle("add", table) : masterDialogTitle("edit", table)}</DialogTitle>
             <DialogDescription>Saved values show up in the dropdowns that use this list.</DialogDescription>
           </DialogHeader>
           <form id="master-form" className="grid gap-3" onSubmit={(event) => { event.preventDefault(); void save(); }}>
@@ -331,15 +388,16 @@ export function ConfigurationBoard() {
             {table === "payment-modes" || (editor !== "new" && editor?.system) ? (
               <p className="text-xs text-muted-foreground">The stored key stays {editor !== "new" ? editor?.key : "fixed"}. Only the label and active flag change.</p>
             ) : null}
+            {formError ? <p role="alert" className="text-sm text-destructive">{formError}</p> : null}
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditor(null)}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => { blockQueryReopen(); setFormError(null); setEditor(null); }}>Cancel</Button>
               <Button type="submit" className="bg-brand text-white">Save</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={remove != null} onOpenChange={(open) => { if (!open) setRemove(null); }}>
+      <Dialog actionsRef={removeActions} open={remove != null} onOpenChange={(open) => { if (!open) { blockQueryReopen(); setRemoveError(null); setRemove(null); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Delete {remove?.name}?</DialogTitle>
@@ -360,8 +418,9 @@ export function ConfigurationBoard() {
               </select>
             </div>
           ) : null}
+          {removeError ? <p role="alert" className="text-sm text-destructive">{removeError}</p> : null}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setRemove(null)}>Cancel</Button>
+            <Button type="button" variant="outline" onClick={() => { blockQueryReopen(); setRemoveError(null); setRemove(null); }}>Cancel</Button>
             {remove && remove.usage === 0 && !remove.system ? (
               <Button type="button" variant="destructive" onClick={() => void confirmDelete()}>Delete</Button>
             ) : (

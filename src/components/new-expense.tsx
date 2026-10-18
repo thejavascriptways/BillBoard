@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import { ExpenseForm } from "@/components/expense-form";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { api } from "@/lib/api-client";
+import { applyDialogSave } from "@/lib/dialog-save";
 import { formatMoney } from "@/lib/money";
 import type { ExpenseDTO, ExpenseInput } from "@/lib/types";
 import { cn } from "cn";
@@ -55,7 +57,15 @@ export function NewExpense() {
             method: "POST",
             body: JSON.stringify(input),
           });
-          setSaved(result.expense);
+          applyDialogSave(
+            { ok: true, message: "Expense saved." },
+            {
+              close: () => setSaved(result.expense),
+              refresh: () => undefined,
+              notify: (message) => toast.success(message),
+              showError: () => undefined,
+            },
+          );
         }}
       />
     </div>

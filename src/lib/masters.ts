@@ -1,14 +1,14 @@
 export const MASTER_TABLES = [
-  { id: "homes", label: "Homes", creatable: true, system: false },
-  { id: "utility-types", label: "Utility types", creatable: true, system: false },
-  { id: "categories", label: "Categories", creatable: true, system: false },
-  { id: "payees", label: "Providers", creatable: true, system: false },
-  { id: "payment-methods", label: "Payment methods", creatable: true, system: false },
-  { id: "payment-modes", label: "Payment modes", creatable: false, system: false },
-  { id: "people", label: "People", creatable: true, system: false },
-  { id: "issuers", label: "Card issuers", creatable: true, system: false },
-  { id: "property-types", label: "Property types", creatable: true, system: false },
-  { id: "system", label: "System lists", creatable: false, system: true },
+  { id: "homes", label: "Homes", noun: "home", creatable: true, system: false },
+  { id: "utility-types", label: "Utility types", noun: "utility type", creatable: true, system: false },
+  { id: "categories", label: "Categories", noun: "category", creatable: true, system: false },
+  { id: "payees", label: "Providers", noun: "provider", creatable: true, system: false },
+  { id: "payment-methods", label: "Payment methods", noun: "payment method", creatable: true, system: false },
+  { id: "payment-modes", label: "Payment modes", noun: "payment mode", creatable: false, system: false },
+  { id: "people", label: "People", noun: "person", creatable: true, system: false },
+  { id: "issuers", label: "Card issuers", noun: "card issuer", creatable: true, system: false },
+  { id: "property-types", label: "Property types", noun: "property type", creatable: true, system: false },
+  { id: "system", label: "System lists", noun: "system list", creatable: false, system: true },
 ] as const;
 
 export type MasterTableId = (typeof MASTER_TABLES)[number]["id"];
