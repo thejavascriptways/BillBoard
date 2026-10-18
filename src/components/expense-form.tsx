@@ -42,18 +42,18 @@ export function ExpenseForm({
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      api<{ properties: PropertyDTO[] }>("/api/v1/properties"),
-      api<{ categories: CategoryDTO[] }>("/api/v1/categories"),
-      api<{ paymentMethods: PaymentMethodDTO[] }>("/api/v1/payment-methods"),
+      api<{ rows: { id: string; isActive: boolean }[] }>("/api/v1/masters?table=homes&active=1"),
+      api<{ rows: { id: string; isActive: boolean }[] }>("/api/v1/masters?table=categories&active=1"),
+      api<{ rows: { id: string; isActive: boolean }[] }>("/api/v1/masters?table=payment-methods&active=1"),
     ])
       .then(([propertyData, categoryData, methodData]) => {
         if (cancelled) return;
-        setProperties(propertyData.properties);
-        setCategories(categoryData.categories);
-        setPaymentMethods(methodData.paymentMethods);
-        setPropertyId((current) => current || propertyData.properties.find((property) => !property.archived)?.id || "");
-        setCategoryId((current) => current || categoryData.categories.find((category) => !category.archived)?.id || "");
-        setPaymentMethodId((current) => current || methodData.paymentMethods.find((method) => !method.archived)?.id || "");
+        setProperties(propertyData.rows.map((row) => ({ id: row.id, archived: !row.isActive })) as PropertyDTO[]);
+        setCategories(categoryData.rows.map((row) => ({ id: row.id, archived: !row.isActive })) as CategoryDTO[]);
+        setPaymentMethods(methodData.rows.map((row) => ({ id: row.id, archived: !row.isActive })) as PaymentMethodDTO[]);
+        setPropertyId((current) => current || propertyData.rows.find((row) => row.isActive)?.id || "");
+        setCategoryId((current) => current || categoryData.rows.find((row) => row.isActive)?.id || "");
+        setPaymentMethodId((current) => current || methodData.rows.find((row) => row.isActive)?.id || "");
       })
       .catch((error: unknown) => {
         if (!cancelled) setLoadError(error instanceof Error ? error.message : "Could not load the form.");

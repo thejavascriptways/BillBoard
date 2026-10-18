@@ -11,8 +11,16 @@ import {
 import { prisma } from "@/server/db";
 import { ServiceError, fieldError } from "@/server/errors";
 import { getHousehold } from "@/server/services/household";
-import { createProperty, updateProperty } from "@/server/services/properties";
-import { ensureUtilityGroup } from "@/server/services/utilities";
+import {
+  householdCategories,
+  householdIssuers,
+  householdLabels,
+  householdPayees,
+  householdPaymentMethods,
+  householdPeople,
+  householdProperties,
+} from "@/server/services/records";
+import { ensureUtilityGroup } from "@/server/services/utility-group";
 import { cleanLast4, cleanOptional, cleanRequired, uniqueSlug } from "@/server/text";
 
 const TABLES = new Set<string>(MASTER_TABLES.map((table) => table.id));
@@ -90,12 +98,18 @@ async function utilityParentId(): Promise<string> {
   return group.id;
 }
 
-export async function listMasters(table: MasterTableId, options?: { activeOnly?: boolean; q?: string | null }): Promise<MasterRow[]> {
+export async function listMasters(
+  table: MasterTableId,
+  options?: { activeOnly?: boolean; q?: string | null; includeId?: string | null },
+): Promise<MasterRow[]> {
   const household = await getHousehold();
   await ensureLookups(prisma, household.id);
   const query = options?.q?.trim().toLowerCase() ?? "";
   let rows = await rowsFor(table, household.id);
-  if (options?.activeOnly) rows = rows.filter((row) => row.isActive);
+  if (options?.activeOnly) {
+    const include = options.includeId;
+    rows = rows.filter((row) => row.isActive || (include != null && include !== "" && (row.id === include || row.key === include)));
+  }
   if (query) rows = rows.filter((row) => row.name.toLowerCase().includes(query) || (row.detail ?? "").toLowerCase().includes(query));
   return rows;
 }
@@ -118,24 +132,31 @@ async function rowsFor(table: MasterTableId, householdId: string): Promise<Maste
     );
   }
   if (table === "homes") {
-    const [homes, bills, expenses, cards] = await Promise.all([
-      prisma.property.findMany({ where: { householdId }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] }),
-      prisma.bill.groupBy({ by: ["propertyId"], where: { householdId }, _count: { _all: true } }),
-      prisma.expense.groupBy({ by: ["propertyId"], where: { householdId }, _count: { _all: true } }),
-      prisma.creditCard.groupBy({ by: ["propertyId"], where: { householdId }, _count: { _all: true } }),
-    ]);
-    const labels = await prisma.lookupLabel.findMany({ where: { householdId, table: "property_type" } });
+    const homes = await householdProperties(householdId);
     const count = new Map<string, number>();
-    for (const row of [...bills, ...expenses, ...cards]) count.set(row.propertyId, (count.get(row.propertyId) ?? 0) + row._count._all);
+    try {
+      const [bills, expenses, cards] = await Promise.all([
+        prisma.bill.groupBy({ by: ["propertyId"], where: { householdId }, _count: { _all: true } }),
+        prisma.expense.groupBy({ by: ["propertyId"], where: { householdId }, _count: { _all: true } }),
+        prisma.creditCard.groupBy({ by: ["propertyId"], where: { householdId }, _count: { _all: true } }),
+      ]);
+      for (const row of [...bills, ...expenses, ...cards]) {
+        count.set(row.propertyId, (count.get(row.propertyId) ?? 0) + row._count._all);
+      }
+    } catch {
+      // Usage is optional. A count failure must not hide homes from Configuration.
+    }
+    const labels = await householdLabels(householdId, "property_type");
     return homes.map((home) => {
       const key = home.typeKey || home.kind;
       const label = labels.find((item) => item.key === key)?.label ?? home.kind;
+      const active = home.isActive && home.archivedAt == null;
       return rowBase({
         id: home.id,
         key,
         name: home.name,
         detail: `${label} · ${home.status}`,
-        isActive: home.isActive,
+        isActive: active,
         sortOrder: home.sortOrder,
         usage: count.get(home.id) ?? 0,
         address: home.address,
@@ -146,11 +167,7 @@ async function rowsFor(table: MasterTableId, householdId: string): Promise<Maste
   }
   if (table === "utility-types" || table === "categories") {
     const parentId = table === "utility-types" ? await utilityParentId() : undefined;
-    const categories = await prisma.category.findMany({
-      where: { householdId, ...(parentId ? { parentId } : {}) },
-      include: { parent: true },
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    });
+    const categories = (await householdCategories(householdId)).filter((category) => (parentId ? category.parentId === parentId : true));
     const [bills, expenses] = await Promise.all([
       prisma.bill.groupBy({ by: ["categoryId"], where: { householdId }, _count: { _all: true } }),
       prisma.expense.groupBy({ by: ["categoryId"], where: { householdId }, _count: { _all: true } }),
@@ -166,19 +183,20 @@ async function rowsFor(table: MasterTableId, householdId: string): Promise<Maste
     return categories.map((category) =>
       rowBase({
         id: category.id,
+        key: category.slug,
         name: category.name,
         detail: category.parent?.name ?? (category.parentId ? null : "Group"),
         color: category.color,
         parentId: category.parentId,
         parentName: category.parent?.name ?? null,
-        isActive: category.isActive,
+        isActive: category.isActive && category.archivedAt == null,
         sortOrder: category.sortOrder,
         usage: (count.get(category.id) ?? 0) + (childCount.get(category.id) ?? 0),
       }),
     );
   }
   if (table === "payees") {
-    const payees = await prisma.payee.findMany({ where: { householdId }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
+    const payees = await householdPayees(householdId);
     const [bills, payments] = await Promise.all([
       prisma.bill.groupBy({ by: ["payeeId"], where: { householdId, payeeId: { not: null } }, _count: { _all: true } }),
       prisma.payment.groupBy({ by: ["payeeId"], where: { householdId }, _count: { _all: true } }),
@@ -191,7 +209,7 @@ async function rowsFor(table: MasterTableId, householdId: string): Promise<Maste
         id: payee.id,
         name: payee.name,
         detail: payee.accountLast4 ? `•••• ${payee.accountLast4}` : null,
-        isActive: payee.isActive,
+        isActive: payee.isActive && payee.archivedAt == null,
         sortOrder: payee.sortOrder,
         usage: count.get(payee.id) ?? 0,
         notes: payee.notes,
@@ -200,7 +218,7 @@ async function rowsFor(table: MasterTableId, householdId: string): Promise<Maste
     );
   }
   if (table === "payment-methods") {
-    const methods = await prisma.paymentMethod.findMany({ where: { householdId }, orderBy: [{ sortOrder: "asc" }, { nickname: "asc" }] });
+    const methods = await householdPaymentMethods(householdId);
     const [bills, expenses, payments] = await Promise.all([
       prisma.bill.groupBy({ by: ["paymentMethodId"], where: { householdId, paymentMethodId: { not: null } }, _count: { _all: true } }),
       prisma.expense.groupBy({ by: ["paymentMethodId"], where: { householdId }, _count: { _all: true } }),
@@ -217,7 +235,7 @@ async function rowsFor(table: MasterTableId, householdId: string): Promise<Maste
         id: method.id,
         name: method.nickname,
         detail: method.last4 ? `•••• ${method.last4}` : null,
-        isActive: method.isActive,
+        isActive: method.isActive && method.archivedAt == null,
         sortOrder: method.sortOrder,
         usage: count.get(method.id) ?? 0,
         last4: method.last4,
@@ -225,7 +243,7 @@ async function rowsFor(table: MasterTableId, householdId: string): Promise<Maste
     );
   }
   if (table === "people") {
-    const people = await prisma.person.findMany({ where: { householdId }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
+    const people = await householdPeople(householdId);
     const [bills, cards] = await Promise.all([
       prisma.bill.groupBy({ by: ["personId"], where: { householdId, personId: { not: null } }, _count: { _all: true } }),
       prisma.creditCard.groupBy({ by: ["cardholderId"], where: { householdId, cardholderId: { not: null } }, _count: { _all: true } }),
@@ -237,7 +255,7 @@ async function rowsFor(table: MasterTableId, householdId: string): Promise<Maste
       rowBase({
         id: person.id,
         name: person.name,
-        isActive: person.isActive,
+        isActive: person.isActive && person.archivedAt == null,
         sortOrder: person.sortOrder,
         usage: count.get(person.id) ?? 0,
         notes: person.notes,
@@ -245,7 +263,7 @@ async function rowsFor(table: MasterTableId, householdId: string): Promise<Maste
     );
   }
   if (table === "issuers") {
-    const issuers = await prisma.cardIssuer.findMany({ where: { householdId }, orderBy: [{ sortOrder: "asc" }, { name: "asc" }] });
+    const issuers = await householdIssuers(householdId);
     const cards = await prisma.creditCard.findMany({ where: { householdId }, select: { issuer: true } });
     return issuers.map((issuer) =>
       rowBase({
@@ -258,10 +276,7 @@ async function rowsFor(table: MasterTableId, householdId: string): Promise<Maste
       }),
     );
   }
-  const labels = await prisma.lookupLabel.findMany({
-    where: { householdId, table: table === "payment-modes" ? "payment_mode" : "property_type" },
-    orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
-  });
+  const labels = await householdLabels(householdId, table === "payment-modes" ? "payment_mode" : "property_type");
   if (table === "payment-modes") {
     const bills = await prisma.bill.groupBy({ by: ["paymentMode"], where: { householdId }, _count: { _all: true } });
     const count = new Map(bills.map((row) => [row.paymentMode, row._count._all]));
@@ -321,6 +336,7 @@ export async function createMaster(table: MasterTableId, input: MasterWrite): Pr
   const name = cleanRequired("name", input.name ?? "", "name", 80);
   if (table === "homes") {
     const systemKind = input.key && ["primary", "rental", "vacation", "other"].includes(input.key) ? input.key : "other";
+    const { createProperty } = await import("@/server/services/properties");
     const created = await createProperty({
       name,
       address: input.address,
@@ -419,6 +435,7 @@ export async function updateMaster(table: MasterTableId, id: string, input: Mast
     const existing = await prisma.property.findFirst({ where: { id, householdId: household.id } });
     if (!existing) throw new ServiceError("That value was not found.", 404, "not_found");
     const kind = input.key && ["primary", "rental", "vacation", "other"].includes(input.key) ? input.key : input.key ? "other" : undefined;
+    const { updateProperty } = await import("@/server/services/properties");
     await updateProperty(id, {
       name: input.name ?? undefined,
       address: input.address,

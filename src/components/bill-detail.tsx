@@ -11,13 +11,12 @@ import { ApiError, api } from "@/lib/api-client";
 import type { BillDTO, OccurrenceDTO, PaymentDTO } from "@/lib/bill-types";
 import { formatDisplayDate, todayInChicago } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
-import type { PaymentMethodDTO } from "@/lib/types";
 
 export function BillDetail({ billId }: { billId: string }) {
   const [bill, setBill] = useState<BillDTO | null>(null);
   const [occurrences, setOccurrences] = useState<OccurrenceDTO[]>([]);
   const [payments, setPayments] = useState<PaymentDTO[]>([]);
-  const [methods, setMethods] = useState<PaymentMethodDTO[]>([]);
+  const [methods, setMethods] = useState<{ id: string; label: string }[]>([]);
   const [amount, setAmount] = useState("");
   const [paidOn, setPaidOn] = useState(todayInChicago());
   const [methodId, setMethodId] = useState("");
@@ -35,7 +34,7 @@ export function BillDetail({ billId }: { billId: string }) {
       api<{ bill: BillDTO }>(`/api/v1/bills/${billId}`),
       api<{ occurrences: OccurrenceDTO[] }>(`/api/v1/occurrences?from=2020-01-01&to=2035-12-31`),
       api<{ payments: PaymentDTO[] }>(`/api/v1/payments?billId=${billId}`),
-      api<{ paymentMethods: PaymentMethodDTO[] }>("/api/v1/payment-methods"),
+      api<{ rows: { id: string; name: string; detail: string | null; isActive: boolean }[] }>("/api/v1/masters?table=payment-methods&active=1"),
       api<{ entries: { yearMonth: string; amount: string | null; paidOn: string | null; status: string }[]; audit: { id: string; summary: string; createdAt: string }[] }>(`/api/v1/months?billId=${billId}`),
     ])
       .then(([billData, occurrenceData, paymentData, methodData, monthData]) => {
@@ -43,7 +42,7 @@ export function BillDetail({ billId }: { billId: string }) {
         const mine = occurrenceData.occurrences.filter((row) => row.billId === billId);
         setOccurrences(mine);
         setPayments(paymentData.payments);
-        setMethods(methodData.paymentMethods);
+        setMethods(methodData.rows.map((row) => ({ id: row.id, label: row.detail ? `${row.name} · ${row.detail}` : row.name })));
         setTimeline(monthData.entries);
         setAudit(monthData.audit);
         const open = mine.find((row) => row.status !== "paid" && row.status !== "skipped");

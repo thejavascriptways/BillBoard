@@ -247,7 +247,7 @@ export function HouseholdSettings() {
         </ul>
         <div className="mt-3 grid gap-2">
           <Label htmlFor="plugin-json">JSON bills import</Label>
-          <textarea id="plugin-json" value={pluginText} onChange={(event) => setPluginText(event.target.value)} className="min-h-24 rounded-lg border border-border p-2 text-sm" placeholder='{"bills":[{"name":"Electric","payee":"Oncor","amount":"140.00","dueDate":"2026-11-06","property":"Little Elm Home","category":"Electric"}]}' />
+          <textarea id="plugin-json" value={pluginText} onChange={(event) => setPluginText(event.target.value)} className="min-h-24 rounded-lg border border-border p-2 text-sm" placeholder='{"bills":[{"name":"Electric","payee":"Oncor","amount":"140.00","dueDate":"2026-11-06","property":"Home","category":"Electric"}]}' />
           <Button
             type="button"
             variant="outline"

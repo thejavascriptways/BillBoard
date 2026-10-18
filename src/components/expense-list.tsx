@@ -11,17 +11,17 @@ import { Label } from "@/components/ui/label";
 import { ChoiceSelect } from "@/components/choice-select";
 import { ApiError, api } from "@/lib/api-client";
 import { formatDisplayDate, lastDayIso, monthRange, todayInChicago } from "@/lib/dates";
-import { archivedChoiceLabel } from "@/lib/labels";
 import { formatMoney } from "@/lib/money";
-import type { CategoryDTO, ExpenseDTO, ExpenseListDTO, PropertyDTO } from "@/lib/types";
+import type { MasterRow } from "@/lib/masters";
+import type { ExpenseDTO, ExpenseListDTO } from "@/lib/types";
 import { cn } from "cn";
 
 export function ExpenseList() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const [properties, setProperties] = useState<PropertyDTO[]>([]);
-  const [categories, setCategories] = useState<CategoryDTO[]>([]);
+  const [properties, setProperties] = useState<MasterRow[]>([]);
+  const [categories, setCategories] = useState<MasterRow[]>([]);
   const [expenses, setExpenses] = useState<ExpenseDTO[]>([]);
   const [total, setTotal] = useState(0);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -68,16 +68,16 @@ export function ExpenseList() {
     params.delete("updated");
     Promise.all([
       api<ExpenseListDTO>(`/api/v1/expenses?${params.toString()}`),
-      api<{ properties: PropertyDTO[] }>("/api/v1/properties"),
-      api<{ categories: CategoryDTO[] }>("/api/v1/categories"),
+      api<{ rows: MasterRow[] }>("/api/v1/masters?table=homes"),
+      api<{ rows: MasterRow[] }>("/api/v1/masters?table=categories"),
     ])
       .then(([list, propertyData, categoryData]) => {
         if (cancelled) return;
         setExpenses(list.expenses);
         setTotal(list.total);
         setNextCursor(list.nextCursor);
-        setProperties(propertyData.properties);
-        setCategories(categoryData.categories);
+        setProperties(propertyData.rows);
+        setCategories(categoryData.rows);
       })
       .catch((caught: unknown) => {
         if (!cancelled) setError(caught instanceof ApiError ? caught.message : "Could not load expenses.");
@@ -193,7 +193,7 @@ export function ExpenseList() {
                   id="filter-property"
                   value={propertyId || "all"}
                   onChange={(value) => replaceParams({ propertyId: value === "all" ? null : value })}
-                  options={[{ value: "all", label: "All properties" }, ...properties.map((property) => ({ value: property.id, label: archivedChoiceLabel(property.name, property.archived) }))]}
+                  options={[{ value: "all", label: "All properties" }, ...properties.map((property) => ({ value: property.id, label: property.isActive ? property.name : `${property.name} (inactive)` }))]}
                 />
               </div>
               <div className="grid gap-1.5">
@@ -202,7 +202,7 @@ export function ExpenseList() {
                   id="filter-category"
                   value={categoryId || "all"}
                   onChange={(value) => replaceParams({ categoryId: value === "all" ? null : value })}
-                  options={[{ value: "all", label: "All categories" }, ...categories.map((category) => ({ value: category.id, label: archivedChoiceLabel(category.name, category.archived) }))]}
+                  options={[{ value: "all", label: "All categories" }, ...categories.map((category) => ({ value: category.id, label: category.isActive ? category.name : `${category.name} (inactive)` }))]}
                 />
               </div>
             </div>

@@ -54,7 +54,7 @@ model Property {
   kind             PropertyKind      @default(other)
   status           PropertyStatus    @default(active)
   purchaseDate     DateTime?         @db.Date
-  /// When this home's role changes. Little Elm becomes a rental on this date.
+  /// When this home's role changes.
   roleStartsOn     DateTime?         @db.Date
   roleBecomes      PropertyKind?
   /// Display key for the property-type list. System keys match `kind`.

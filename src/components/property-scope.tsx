@@ -1,9 +1,11 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
 import { api } from "@/lib/api-client";
-import type { PropertyDTO } from "@/lib/types";
+import { defaultHomeId } from "@/lib/homes";
+import type { MasterRow } from "@/lib/masters";
 
 type Scope = {
   propertyId: string;
@@ -30,10 +32,10 @@ export function PropertyScopeProvider({ children }: { children: React.ReactNode 
     return () => window.clearTimeout(timer);
   }, []);
 
-  function setPropertyId(id: string) {
+  const setPropertyId = useCallback((id: string) => {
     setPropertyIdState(id);
     window.localStorage.setItem("billboard.property", id);
-  }
+  }, []);
 
   return (
     <PropertyScopeContext.Provider value={{ propertyId, setPropertyId, ready }}>
@@ -52,14 +54,19 @@ export function scopeQuery(propertyId: string): string {
 }
 
 export function PropertySwitcher() {
+  const router = useRouter();
   const { propertyId, setPropertyId, ready } = usePropertyScope();
-  const [properties, setProperties] = useState<PropertyDTO[]>([]);
+  const [properties, setProperties] = useState<MasterRow[]>([]);
 
   useEffect(() => {
-    api<{ properties: PropertyDTO[] }>("/api/v1/properties")
-      .then((data) => setProperties(data.properties.filter((property) => !property.archived)))
+    api<{ rows: MasterRow[] }>("/api/v1/masters?table=homes")
+      .then((data) => {
+        setProperties(data.rows);
+        const saved = window.localStorage.getItem("billboard.property");
+        if (!saved) setPropertyId(defaultHomeId(data.rows, null));
+      })
       .catch(() => setProperties([]));
-  }, []);
+  }, [setPropertyId]);
 
   return (
     <label className="grid gap-1 text-xs font-medium text-white/80">
@@ -69,7 +76,7 @@ export function PropertySwitcher() {
         value={ready ? propertyId : "all"}
         onChange={(event) => {
           if (event.target.value === "__new__") {
-            window.location.href = "/configuration?table=homes&add=1";
+            router.push("/configuration?table=homes&add=1");
             return;
           }
           setPropertyId(event.target.value);
@@ -79,9 +86,9 @@ export function PropertySwitcher() {
         <option value="all" className="text-foreground">
           All homes
         </option>
-        {properties.map((property) => (
+        {properties.filter((property) => property.isActive || property.id === propertyId).map((property) => (
           <option key={property.id} value={property.id} className="text-foreground">
-            {property.name}
+            {property.isActive ? property.name : `${property.name} (inactive)`}
           </option>
         ))}
         <option value="__new__" className="text-foreground">Add new…</option>

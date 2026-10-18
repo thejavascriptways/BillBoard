@@ -44,7 +44,7 @@ export function CardBoard() {
   useEffect(() => {
     const openForm = new URLSearchParams(window.location.search).get("new") === "1";
     const timer = openForm ? setTimeout(() => setOpen(true), 0) : undefined;
-    api<{ people: { id: string; name: string; archived?: boolean }[] }>("/api/v1/people").then((data) => setPeople(data.people)).catch(() => undefined);
+    api<{ rows: { id: string; name: string; isActive: boolean }[] }>("/api/v1/masters?table=people").then((data) => setPeople(data.rows.map((row) => ({ id: row.id, name: row.name, archived: !row.isActive })))).catch(() => undefined);
     api<{ rows: { name: string; isActive: boolean }[] }>("/api/v1/masters?table=issuers&active=1").then((data) => setIssuers(data.rows.map((row) => row.name))).catch(() => undefined);
     return () => {
       if (timer) clearTimeout(timer);

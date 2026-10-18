@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ApiError, api } from "@/lib/api-client";
 import type { BillDTO } from "@/lib/bill-types";
 import { todayInChicago } from "@/lib/dates";
-import type { CategoryDTO, PropertyDTO } from "@/lib/types";
+import type { MasterRow } from "@/lib/masters";
 
 const selectClass = "h-12 w-full rounded-lg border border-border bg-background px-3 text-base";
 
@@ -50,12 +50,12 @@ export function BillForm({ billId }: { billId?: string }) {
 
   useEffect(() => {
     Promise.all([
-      api<{ properties: PropertyDTO[] }>("/api/v1/properties"),
-      api<{ categories: CategoryDTO[] }>("/api/v1/categories"),
+      api<{ rows: MasterRow[] }>("/api/v1/masters?table=homes&active=1"),
+      api<{ rows: MasterRow[] }>("/api/v1/masters?table=categories&active=1"),
     ])
       .then(([propertyData, categoryData]) => {
-        const openProperties = propertyData.properties.filter((item) => !item.archived);
-        const openCategories = categoryData.categories.filter((item) => !item.archived);
+        const openProperties = propertyData.rows.filter((item) => item.isActive);
+        const openCategories = categoryData.rows.filter((item) => item.isActive);
         api<{ bills: { id: string; name: string }[] }>("/api/v1/bills")
           .then((data) => setOtherBills(data.bills))
           .catch(() => setOtherBills([]));

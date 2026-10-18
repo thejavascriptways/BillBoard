@@ -8,5 +8,6 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-  event.respondWith(fetch(event.request));
+  const fresh = event.request.url.includes("/api/") ? { cache: "no-store" } : undefined;
+  event.respondWith(fetch(event.request, fresh));
 });

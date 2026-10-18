@@ -9,14 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError, api } from "@/lib/api-client";
 import type { OccurrenceDTO } from "@/lib/bill-types";
-import type { CategoryDTO } from "@/lib/types";
+import type { MasterRow } from "@/lib/masters";
 import { formatDisplayDate } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 
 export function BillList() {
   const { propertyId, ready } = usePropertyScope();
   const [rows, setRows] = useState<OccurrenceDTO[]>([]);
-  const [categories, setCategories] = useState<CategoryDTO[]>([]);
+  const [categories, setCategories] = useState<MasterRow[]>([]);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -45,7 +45,7 @@ export function BillList() {
   }
 
   useEffect(() => {
-    api<{ categories: CategoryDTO[] }>("/api/v1/categories").then((data) => setCategories(data.categories)).catch(() => undefined);
+    api<{ rows: MasterRow[] }>("/api/v1/masters?table=categories").then((data) => setCategories(data.rows)).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -87,7 +87,7 @@ export function BillList() {
           <option value="">Any category</option>
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
-              {category.name}
+              {category.isActive ? category.name : `${category.name} (inactive)`}
             </option>
           ))}
         </select>

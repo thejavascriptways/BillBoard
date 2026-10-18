@@ -11,10 +11,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, api } from "@/lib/api-client";
+import { defaultHomeId } from "@/lib/homes";
+import type { MasterRow } from "@/lib/masters";
 import type { BillDTO } from "@/lib/bill-types";
 import { addMonths, formatDisplayDate, formatLongMonth, todayInChicago } from "@/lib/dates";
 import { formatMoney, fromCents, toCents } from "@/lib/money";
-import type { PropertyDTO } from "@/lib/types";
 import { cn } from "cn";
 
 const HOME_KEY = "billboard.utilities.home";
@@ -84,7 +85,7 @@ function sortRows(rows: UtilityRow[]): UtilityRow[] {
 
 export function UtilitiesBoard() {
   const pathname = usePathname();
-  const [properties, setProperties] = useState<PropertyDTO[]>([]);
+  const [properties, setProperties] = useState<MasterRow[]>([]);
   const [types, setTypes] = useState<UtilityType[]>([]);
   const [providers, setProviders] = useState<string[]>([]);
   const [groupId, setGroupId] = useState("");
@@ -119,21 +120,20 @@ export function UtilitiesBoard() {
   useEffect(() => {
     let cancel = false;
     Promise.all([
-      api<{ properties: PropertyDTO[] }>("/api/v1/properties"),
-      api<{ groupId: string; types: UtilityType[] }>("/api/v1/utilities"),
+      api<{ rows: MasterRow[] }>("/api/v1/masters?table=homes"),
+      api<{ rows: MasterRow[] }>("/api/v1/masters?table=utility-types"),
+      api<{ rows: MasterRow[] }>("/api/v1/masters?table=categories"),
       api<{ rows: { name: string }[] }>("/api/v1/masters?table=payees&active=1"),
     ])
-      .then(([propertyData, catalog, payees]) => {
+      .then(([homes, types, categories, payees]) => {
         if (cancel) return;
-        const list = propertyData.properties.filter((property) => !property.archived);
+        const list = homes.rows;
         setProperties(list);
-        setTypes(catalog.types);
+        setTypes(types.rows.filter((type) => type.isActive).map((type) => ({ id: type.id, name: type.name })));
         setProviders(payees.rows.map((row) => row.name));
-        setGroupId(catalog.groupId);
+        setGroupId(categories.rows.find((row) => row.key === "utilities" && !row.parentId)?.id ?? "");
         const saved = window.localStorage.getItem(HOME_KEY);
-        const elm = list.find((property) => property.name === "Little Elm Home");
-        const known = saved === "all" || list.some((property) => property.id === saved);
-        setHomeId(known && saved ? saved : elm?.id ?? list[0]?.id ?? "all");
+        setHomeId(defaultHomeId(list, saved));
         setReady(true);
       })
       .catch((caught: unknown) => {
@@ -185,8 +185,7 @@ export function UtilitiesBoard() {
   useEffect(() => {
     if (!ready || newOpened.current) return;
     if (new URLSearchParams(window.location.search).get("new") !== "1") return;
-    const elm = properties.find((property) => property.name === "Little Elm Home");
-    const propertyId = homeId !== "all" ? homeId : elm?.id ?? properties[0]?.id ?? "";
+    const propertyId = homeId !== "all" ? homeId : properties.find((property) => property.isActive)?.id ?? "";
     const timer = window.setTimeout(() => {
       newOpened.current = true;
       setEditing(null);
@@ -245,8 +244,8 @@ export function UtilitiesBoard() {
       } else {
         await api("/api/v1/utilities", { method: "POST", body: JSON.stringify(body) });
       }
-      const catalog = await api<{ groupId: string; types: UtilityType[] }>("/api/v1/utilities");
-      setTypes(catalog.types);
+      const catalog = await api<{ rows: MasterRow[] }>("/api/v1/masters?table=utility-types&active=1");
+      setTypes(catalog.rows.map((row) => ({ id: row.id, name: row.name })));
       setEditor(false);
       refresh();
     } catch (caught) {
@@ -365,10 +364,9 @@ export function UtilitiesBoard() {
           </p>
         </div>
         <Button type="button" className="bg-brand text-white" onClick={() => {
-          const elm = properties.find((property) => property.name === "Little Elm Home");
           setEditing(null);
           setTypeQuery("");
-          setForm(blankForm(homeId !== "all" ? homeId : elm?.id ?? properties[0]?.id ?? ""));
+          setForm(blankForm(homeId !== "all" ? homeId : properties.find((property) => property.isActive)?.id ?? ""));
           setFormError(null);
           setEditor(true);
         }}>
@@ -381,8 +379,8 @@ export function UtilitiesBoard() {
           <Label htmlFor="utility-home">Home</Label>
           <select id="utility-home" aria-label="Home" className={selectClass} value={homeId} onChange={(event) => chooseHome(event.target.value)}>
             <option value="all">All homes</option>
-            {properties.map((property) => (
-              <option key={property.id} value={property.id}>{property.name}</option>
+            {properties.filter((property) => property.isActive || property.id === homeId).map((property) => (
+              <option key={property.id} value={property.id}>{property.isActive ? property.name : `${property.name} (inactive)`}</option>
             ))}
           </select>
         </div>

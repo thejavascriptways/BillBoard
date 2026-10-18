@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import { PrismaClient, type PropertyKind, type PropertyStatus } from "@prisma/client";
 
 import { prisma as sharedPrisma } from "../src/server/db";
+import { linkLegacyMasters } from "../src/server/services/link-legacy";
 import { ensureLookups } from "../src/server/services/masters";
 
 const PROPERTIES: {
@@ -89,18 +90,7 @@ export async function seed(client: PrismaClient = sharedPrisma) {
       where: { householdId_slug: { householdId: household.id, slug: property.slug } },
     });
     if (!existing) {
-      await client.property.create({ data: { ...property, householdId: household.id } });
-    } else {
-      await client.property.update({
-        where: { id: existing.id },
-        data: {
-          kind: property.kind,
-          status: property.status,
-          roleStartsOn: property.roleStartsOn,
-          roleBecomes: property.roleBecomes,
-          notes: existing.notes ?? property.notes,
-        },
-      });
+      await client.property.create({ data: { ...property, householdId: household.id, typeKey: property.kind } });
     }
   }
 
@@ -110,13 +100,9 @@ export async function seed(client: PrismaClient = sharedPrisma) {
       where: { householdId_slug: { householdId: household.id, slug: group.slug } },
     });
     const saved = existing
-      ? await client.category.update({
-          where: { id: existing.id },
-          data: { color: group.color, sortOrder: index, parentId: null },
-        })
-      : await client.category.create({
+      ?? (await client.category.create({
           data: { householdId: household.id, slug: group.slug, name: group.name, color: group.color, sortOrder: index },
-        });
+        }));
     groupIds.set(group.slug, saved.id);
   }
 
@@ -129,8 +115,6 @@ export async function seed(client: PrismaClient = sharedPrisma) {
       await client.category.create({
         data: { householdId: household.id, slug: category.slug, name: category.name, sortOrder: 20 + index, parentId, color: "#534C66" },
       });
-    } else {
-      await client.category.update({ where: { id: existing.id }, data: { parentId } });
     }
   }
 
@@ -144,6 +128,7 @@ export async function seed(client: PrismaClient = sharedPrisma) {
   });
 
   await ensureLookups(client, household.id);
+  await linkLegacyMasters(client, household.id);
   const cleared = await client.expense.deleteMany({ where: { householdId: household.id, isSample: true } });
   return { household: household.name, samples: 0, cleared: cleared.count };
 }

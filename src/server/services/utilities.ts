@@ -6,16 +6,10 @@ import type { BillDTO } from "@/lib/bill-types";
 import { prisma } from "@/server/db";
 import { fieldError, ServiceError } from "@/server/errors";
 import { getHousehold } from "@/server/services/household";
+import { listMasters } from "@/server/services/masters";
+import { ensureUtilityGroup } from "@/server/services/utility-group";
 
-const BUILTIN: { slug: string; name: string }[] = [
-  { slug: "electric", name: "Electric" },
-  { slug: "gas", name: "Gas" },
-  { slug: "water", name: "Water" },
-  { slug: "sewer", name: "Sewer" },
-  { slug: "trash", name: "Trash" },
-  { slug: "internet", name: "Internet" },
-  { slug: "phone", name: "Phone" },
-];
+export { ensureUtilityGroup };
 
 export type UtilityWrite = {
   categoryId?: string | null;
@@ -65,53 +59,10 @@ function paymentChoice(input: UtilityWrite): { paymentMode: "auto" | "manual" | 
   return { paymentMode: "manual", autopay: false };
 }
 
-export async function ensureUtilityGroup() {
-  const household = await getHousehold();
-  let group = await prisma.category.findFirst({
-    where: { householdId: household.id, OR: [{ slug: "utilities" }, { name: "Utilities", parentId: null }] },
-  });
-  if (!group) {
-    group = await prisma.category.create({
-      data: { householdId: household.id, slug: "utilities", name: "Utilities", color: "#0F6E6E", sortOrder: 1 },
-    });
-  } else if (group.parentId) {
-    group = await prisma.category.update({ where: { id: group.id }, data: { parentId: null } });
-  }
-  for (const [index, type] of BUILTIN.entries()) {
-    const existing = await prisma.category.findFirst({
-      where: { householdId: household.id, OR: [{ slug: type.slug }, { name: type.name }] },
-    });
-    if (!existing) {
-      await prisma.category.create({
-        data: {
-          householdId: household.id,
-          slug: type.slug,
-          name: type.name,
-          parentId: group.id,
-          sortOrder: 20 + index,
-          color: "#534C66",
-        },
-      });
-    } else if (existing.parentId !== group.id) {
-      await prisma.category.update({ where: { id: existing.id }, data: { parentId: group.id } });
-    }
-  }
-  await prisma.category.updateMany({
-    where: { householdId: household.id, slug: "water-sewer" },
-    data: { parentId: group.id },
-  });
-  return group;
-}
-
 export async function utilityCatalog() {
   const group = await ensureUtilityGroup();
-  const household = await getHousehold();
-  const children = await prisma.category.findMany({
-    where: { householdId: household.id, parentId: group.id, archivedAt: null, isActive: true },
-  });
-  const rank = new Map(BUILTIN.map((type, index) => [type.slug, index]));
-  children.sort((a, b) => (rank.get(a.slug) ?? 100) - (rank.get(b.slug) ?? 100) || a.name.localeCompare(b.name));
-  return { groupId: group.id, types: children.map((row) => ({ id: row.id, name: row.name })) };
+  const rows = await listMasters("utility-types", { activeOnly: true });
+  return { groupId: group.id, types: rows.map((row) => ({ id: row.id, name: row.name })) };
 }
 
 async function resolveType(groupId: string, input: UtilityWrite) {

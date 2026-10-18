@@ -6,6 +6,7 @@ import { prisma } from "@/server/db";
 import { inUseError, ServiceError, fieldError } from "@/server/errors";
 import { applyOrder } from "@/server/order";
 import { getHousehold } from "@/server/services/household";
+import { householdProperties } from "@/server/services/records";
 import { cleanOptional, cleanRequired, uniqueSlug } from "@/server/text";
 
 const KINDS: PropertyKind[] = ["primary", "rental", "vacation", "other"];
@@ -41,7 +42,7 @@ function toDTO(property: Property, expenseCount: number): PropertyDTO {
     roleStartsOn: property.roleStartsOn ? formatIsoDate(property.roleStartsOn) : null,
     roleBecomes: property.roleBecomes,
     sortOrder: property.sortOrder,
-    archived: !property.isActive || property.archivedAt != null || property.status === "archived",
+    archived: !property.isActive || property.archivedAt != null,
     expenseCount,
   };
 }
@@ -57,13 +58,7 @@ async function counts(householdId: string): Promise<Map<string, number>> {
 
 export async function listProperties(): Promise<PropertyDTO[]> {
   const household = await getHousehold();
-  const [rows, usage] = await Promise.all([
-    prisma.property.findMany({
-      where: { householdId: household.id },
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    }),
-    counts(household.id),
-  ]);
+  const [rows, usage] = await Promise.all([householdProperties(household.id), counts(household.id)]);
   return rows.map((row) => toDTO(row, usage.get(row.id) ?? 0));
 }
 

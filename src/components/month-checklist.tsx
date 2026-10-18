@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { ApiError, api } from "@/lib/api-client";
 import { addMonths, formatLongMonth, todayInChicago } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
-import type { CategoryDTO } from "@/lib/types";
+import type { MasterRow } from "@/lib/masters";
 
 type Row = {
   id: string;
@@ -79,7 +79,7 @@ export function MonthChecklist() {
   const [data, setData] = useState<Checklist | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
   const [modes, setModes] = useState<{ key: string; name: string; isActive: boolean }[]>([]);
-  const [categories, setCategories] = useState<CategoryDTO[]>([]);
+  const [categories, setCategories] = useState<MasterRow[]>([]);
   const [categoryId, setCategoryId] = useState("");
   const [personId, setPersonId] = useState("");
   const [mode, setMode] = useState("");
@@ -105,8 +105,8 @@ export function MonthChecklist() {
   useEffect(() => {
     if (!ready) return;
     load(month);
-    api<{ people: Person[] }>("/api/v1/people").then((result) => setPeople(result.people)).catch(() => setPeople([]));
-    api<{ categories: CategoryDTO[] }>("/api/v1/categories").then((result) => setCategories(result.categories)).catch(() => setCategories([]));
+    api<{ rows: MasterRow[] }>("/api/v1/masters?table=people").then((result) => setPeople(result.rows.map((row) => ({ id: row.id, name: row.name, archived: !row.isActive })))).catch(() => setPeople([]));
+    api<{ rows: MasterRow[] }>("/api/v1/masters?table=categories").then((result) => setCategories(result.rows)).catch(() => setCategories([]));
     api<{ rows: { key: string; name: string; isActive: boolean }[] }>("/api/v1/masters?table=payment-modes")
       .then((result) => setModes(result.rows))
       .catch(() => setModes([]));
@@ -158,8 +158,8 @@ export function MonthChecklist() {
       <div className="grid gap-2 sm:grid-cols-4">
         <select aria-label="Category" value={categoryId} onChange={(event) => setCategoryId(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-2 text-sm">
           <option value="">All categories</option>
-          {categories.filter((category) => !category.archived).map((category) => (
-            <option key={category.id} value={category.id}>{category.name}</option>
+          {categories.filter((category) => category.isActive || category.id === categoryId).map((category) => (
+            <option key={category.id} value={category.id}>{category.isActive ? category.name : `${category.name} (inactive)`}</option>
           ))}
         </select>
         <select aria-label="Cardholder" value={personId} onChange={(event) => setPersonId(event.target.value)} className="h-10 rounded-lg border border-border bg-background px-2 text-sm">
