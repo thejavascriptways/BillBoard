@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { scopeQuery, usePropertyScope } from "@/components/property-scope";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError, api } from "@/lib/api-client";
+import { cardDayValue, cardLast4Message, cardPropertyForSave } from "@/lib/card-form";
 import { applyDialogSave, forgetDialogQuery } from "@/lib/dialog-save";
 import type { CardDTO } from "@/lib/bill-types";
 import { formatDisplayDate } from "@/lib/dates";
@@ -26,7 +27,7 @@ const empty = {
 };
 
 export function CardBoard() {
-  const { propertyId, ready } = usePropertyScope();
+  const { propertyId, setPropertyId, ready } = usePropertyScope();
   const [cards, setCards] = useState<CardDTO[]>([]);
   const [people, setPeople] = useState<{ id: string; name: string; archived?: boolean }[]>([]);
   const [issuers, setIssuers] = useState<string[]>([]);
@@ -36,6 +37,7 @@ export function CardBoard() {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const openedFromQuery = useRef(false);
 
   function load() {
     if (!ready) return;
@@ -45,14 +47,22 @@ export function CardBoard() {
   }
 
   useEffect(() => {
-    const openForm = new URLSearchParams(window.location.search).get("new") === "1";
-    const timer = openForm ? setTimeout(() => setOpen(true), 0) : undefined;
     api<{ rows: { id: string; name: string; isActive: boolean }[] }>("/api/v1/masters?table=people").then((data) => setPeople(data.rows.map((row) => ({ id: row.id, name: row.name, archived: !row.isActive })))).catch(() => undefined);
     api<{ rows: { name: string; isActive: boolean }[] }>("/api/v1/masters?table=issuers&active=1").then((data) => setIssuers(data.rows.map((row) => row.name))).catch(() => undefined);
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
   }, []);
+
+  useEffect(() => {
+    if (!ready || openedFromQuery.current) return;
+    if (new URLSearchParams(window.location.search).get("new") !== "1") return;
+    const timer = window.setTimeout(() => {
+      openedFromQuery.current = true;
+      setEditing(null);
+      setFormError(null);
+      setForm({ ...empty, propertyId: propertyId !== "all" ? propertyId : "" });
+      setOpen(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [ready, propertyId]);
 
   useEffect(() => {
     load();
@@ -89,17 +99,25 @@ export function CardBoard() {
       notify: (message: string) => toast.success(message),
       showError: setFormError,
     };
-    if (!form.last4.trim()) {
-      applyDialogSave({ ok: false, message: "Enter the last 4 digits." }, effects);
+    const last4Message = cardLast4Message(form.last4);
+    if (last4Message) {
+      applyDialogSave({ ok: false, message: last4Message }, effects);
       return;
     }
+    const statement = cardDayValue(form.statementDay);
+    const due = cardDayValue(form.dueDay);
+    if (statement.message || due.message) {
+      applyDialogSave({ ok: false, message: statement.message ?? due.message ?? "Check the days." }, effects);
+      return;
+    }
+    const savedPropertyId = cardPropertyForSave(form.propertyId, propertyId);
     const body = {
-      issuer: form.issuer,
-      nickname: form.nickname,
-      last4: form.last4,
-      propertyId: form.propertyId || null,
-      statementDay: form.statementDay || null,
-      dueDay: form.dueDay || null,
+      issuer: form.issuer.trim(),
+      nickname: form.nickname.trim(),
+      last4: form.last4.trim(),
+      propertyId: savedPropertyId,
+      statementDay: statement.day,
+      dueDay: due.day,
       autopay: form.autopay,
       cardholderId: form.cardholderId || null,
     };
@@ -108,9 +126,20 @@ export function CardBoard() {
       if (issuerName && !issuers.some((name) => name.toLowerCase() === issuerName.toLowerCase())) {
         await api("/api/v1/masters", { method: "POST", body: JSON.stringify({ table: "issuers", name: issuerName }) });
       }
-      if (editing) await api(`/api/v1/cards/${editing}`, { method: "PATCH", body: JSON.stringify(body) });
-      else await api("/api/v1/cards", { method: "POST", body: JSON.stringify(body) });
-      applyDialogSave({ ok: true, message: editing ? "Card updated." : "Card saved.", search: window.location.search }, effects);
+      const result = editing
+        ? await api<{ card: CardDTO }>(`/api/v1/cards/${editing}`, { method: "PATCH", body: JSON.stringify(body) })
+        : await api<{ card: CardDTO }>("/api/v1/cards", { method: "POST", body: JSON.stringify(body) });
+      applyDialogSave({ ok: true, message: editing ? "Card updated." : "Card saved.", search: window.location.search }, {
+        ...effects,
+        refresh: () => {
+          const home = result.card.propertyId;
+          if (propertyId !== "all" && home && home !== propertyId) {
+            setPropertyId(home);
+            return;
+          }
+          load();
+        },
+      });
     } catch (caught) {
       applyDialogSave(
         { ok: false, message: caught instanceof ApiError ? caught.message : "Could not save the card." },
@@ -130,7 +159,7 @@ export function CardBoard() {
           <option value="">All cardholders</option>
           {people.filter((person) => !person.archived || person.id === cardholderId).map((person) => <option key={person.id} value={person.id}>{person.archived ? `${person.name} (inactive)` : person.name}</option>)}
         </select>
-        <Button type="button" className="h-11!" onClick={() => { setEditing(null); setForm(empty); setFormError(null); setOpen(true); }}>
+        <Button type="button" className="h-11!" onClick={() => { setEditing(null); setForm({ ...empty, propertyId: propertyId !== "all" ? propertyId : "" }); setFormError(null); setOpen(true); }}>
           Add card
         </Button>
       </div>
@@ -194,6 +223,7 @@ export function CardBoard() {
         <form
           id="card-form"
           className="grid gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/10 sm:grid-cols-2"
+          noValidate
           onSubmit={(event) => {
             event.preventDefault();
             void save();
@@ -213,7 +243,7 @@ export function CardBoard() {
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="card-last4">Last 4</Label>
-            <Input id="card-last4" inputMode="numeric" autoComplete="off" required value={form.last4} onChange={(event) => setForm((current) => ({ ...current, last4: event.target.value }))} className="h-12!" />
+            <Input id="card-last4" inputMode="numeric" autoComplete="off" aria-invalid={Boolean(formError)} value={form.last4} onChange={(event) => setForm((current) => ({ ...current, last4: event.target.value }))} className="h-12!" />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="card-statement">Statement day</Label>

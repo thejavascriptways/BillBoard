@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { ApiError, api } from "@/lib/api-client";
 import { applyDialogSave } from "@/lib/dialog-save";
 import type { MasterRow, MasterTableId } from "@/lib/masters";
+import { committedOption } from "@/lib/select-value";
 
 const selectClass = "h-11 w-full rounded-lg border border-border bg-background px-3 text-sm";
 
@@ -36,6 +37,7 @@ export function MasterSelect({
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const onChangeRef = useRef(onChange);
 
   function load() {
     api<{ rows: MasterRow[] }>(`/api/v1/masters?table=${table}`)
@@ -52,6 +54,18 @@ export function MasterSelect({
   const field = (row: MasterRow) => (valueField === "key" ? row.key : valueField === "name" ? row.name : row.id);
   const visible = rows.filter((row) => row.isActive || field(row) === value);
   const known = visible.some((row) => field(row) === value);
+
+  useLayoutEffect(() => {
+    onChangeRef.current = onChange;
+    const next = committedOption(
+      value,
+      visible.map((row) => field(row)),
+      emptyLabel != null,
+    );
+    if (next) onChangeRef.current(next);
+    // visible is derived from rows and the current value. Layout so the id is set before a click can land on the displayed option.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- commit once options or the value change
+  }, [rows, value, emptyLabel, valueField]);
 
   async function add() {
     const effects = {
@@ -101,13 +115,14 @@ export function MasterSelect({
         }}
       >
         {emptyLabel != null ? <option value="">{emptyLabel}</option> : null}
+        {rows.length === 0 && emptyLabel == null ? <option value="">Loading…</option> : null}
         {visible.map((row) => (
           <option key={row.id} value={field(row)}>
             {row.isActive ? row.name : `${row.name} (inactive)`}
           </option>
         ))}
         {!known && value ? <option value={value}>{currentLabel ? `${currentLabel} (inactive)` : value}</option> : null}
-        {creatable ? <option value="__new__">Add new…</option> : null}
+        {rows.length > 0 && creatable ? <option value="__new__">Add new…</option> : null}
       </select>
       {adding ? (
         <div className="flex gap-2">

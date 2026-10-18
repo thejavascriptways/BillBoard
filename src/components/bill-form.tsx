@@ -105,16 +105,52 @@ export function BillForm({ billId }: { billId?: string }) {
     setReminders((current) => (current.includes(day) ? current.filter((item) => item !== day) : [...current, day].sort((a, b) => b - a)));
   }
 
+  /** The first option is already on screen before React state catches up. Save that id. */
+  function shownSelect(elementId: string): string {
+    const element = document.getElementById(elementId);
+    if (!(element instanceof HTMLSelectElement)) return "";
+    const shown = element.selectedOptions[0]?.value || element.value;
+    return shown && shown !== "__new__" ? shown : "";
+  }
+
   async function save() {
     setPending(true);
     setError(null);
+    const effects = {
+      close: () => undefined,
+      refresh: () => router.refresh(),
+      notify: (message: string) => toast.success(message),
+      showError: (message: string) => {
+        setError(message);
+        setPending(false);
+      },
+    };
+    if (!name.trim()) {
+      applyDialogSave({ ok: false, message: "Enter a bill name." }, effects);
+      return;
+    }
+    const property = propertyId && propertyId !== "__new__" ? propertyId : shownSelect("bill-property");
+    const category = categoryId && categoryId !== "__new__" ? categoryId : shownSelect("bill-category");
+    if (!property) {
+      applyDialogSave({ ok: false, message: "Choose a property." }, effects);
+      return;
+    }
+    if (!category) {
+      applyDialogSave({ ok: false, message: "Choose a category." }, effects);
+      return;
+    }
+    if (!amount.trim()) {
+      applyDialogSave({ ok: false, message: "Enter an amount." }, effects);
+      return;
+    }
     const body = {
       name,
       payeeId: payeeId || null,
       payeeName: null,
+      payeeOptional: !payeeId,
       accountLast4: null,
-      propertyId,
-      categoryId,
+      propertyId: property,
+      categoryId: category,
       amount,
       amountKind,
       anchorDate,
@@ -137,15 +173,6 @@ export function BillForm({ billId }: { billId?: string }) {
       portalUrl,
       reminderDays: reminders,
     };
-    const effects = {
-      close: () => undefined,
-      refresh: () => router.refresh(),
-      notify: (message: string) => toast.success(message),
-      showError: (message: string) => {
-        setError(message);
-        setPending(false);
-      },
-    };
     try {
       const result = billId
         ? await api<{ bill: BillDTO }>(`/api/v1/bills/${billId}`, { method: "PATCH", body: JSON.stringify(body) })
@@ -166,6 +193,7 @@ export function BillForm({ billId }: { billId?: string }) {
     <form
       id="bill-form"
       className="mx-auto grid max-w-2xl gap-4"
+      noValidate
       onSubmit={(event) => {
         event.preventDefault();
         void save();
