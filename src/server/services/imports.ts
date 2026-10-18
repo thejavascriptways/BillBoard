@@ -1,6 +1,7 @@
 import { FREQUENCIES, type Frequency } from "@/core/recurrence";
 import { PluginHost } from "@/core/plugins";
 import { BILL_COLUMNS, guessMapping, mapBillRows, parseCsv, type BillColumn } from "@/core/csv-bills";
+import { type BillDTO } from "@/lib/bill-types";
 import { toCsv } from "@/lib/csv";
 import { isIsoDate } from "@/lib/dates";
 import { prisma } from "@/server/db";
@@ -110,7 +111,7 @@ export async function importWithPlugin(pluginId: string, text: string) {
   } catch (error) {
     throw new ServiceError(error instanceof Error ? error.message : "Could not read that file.", 400, "invalid");
   }
-  const created = [];
+  const created: BillDTO[] = [];
   for (const row of rows) created.push(await placeRow(row));
   return created;
 }
@@ -131,7 +132,7 @@ export function previewBillCsv(text: string, mapping?: Partial<Record<BillColumn
 export async function importBillCsv(text: string, mapping: Record<BillColumn, number | null>) {
   const table = parseCsv(text);
   const rows = mapBillRows(table, mapping).filter((row) => row.name || row.payee || row.amount);
-  const created = [];
+  const created: BillDTO[] = [];
   const errors: string[] = [];
   for (const row of rows) {
     try {

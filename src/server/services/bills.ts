@@ -1,4 +1,4 @@
-import { Prisma, type Bill, type PaymentMethod } from "@prisma/client";
+import { Prisma, type Bill, type PaymentMethod } from "@/server/prisma-types";
 
 import { parseDueOn, type DueRuleKind, type PaymentMode } from "@/core/due-on";
 import { events } from "@/core/events";

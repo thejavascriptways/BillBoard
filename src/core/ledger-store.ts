@@ -1,19 +1,17 @@
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@/server/prisma-types";
 
 /**
  * Persistence seam for BillBoard.
  *
- * Today the books live in Supabase Postgres through Prisma. Supabase encrypts
- * that database at rest. The UI and the expense services talk to Prisma.
- *
- * A later local store (SQLCipher) can implement LedgerStore and be chosen in
- * openLedgerStore. That swap should not require a new UI.
+ * The books live in a Google Sheet named BillBoard, inside a Drive folder
+ * of the same name. The running app reads and writes an in-memory copy of
+ * that sheet. Domain services talk to that copy through a Prisma-shaped client.
  */
 export interface LedgerStore {
-  readonly kind: "supabase";
+  readonly kind: "sheet";
   readonly client: PrismaClient;
 }
 
 export function openLedgerStore(client: PrismaClient): LedgerStore {
-  return { kind: "supabase", client };
+  return { kind: "sheet", client };
 }

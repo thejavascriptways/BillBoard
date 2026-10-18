@@ -34,8 +34,12 @@ AUTH_SECRET='dev-only-billboard-secret-change-me'
     expect(parsed.AUTH_SECRET).toBe("dev-only-billboard-secret-change-me");
   });
 
-  it("requires both a postgres URL and a long AUTH_SECRET", () => {
+  it("requires a long AUTH_SECRET and keeps a postgres URL when one is present", () => {
+    expect(secretsFromEnv({ AUTH_SECRET: "short" })).toBeNull();
     expect(secretsFromEnv({ DATABASE_URL: "postgresql://localhost/db", AUTH_SECRET: "short" })).toBeNull();
+    const alone = secretsFromEnv({ AUTH_SECRET: "dev-only-billboard-secret-change-me" });
+    expect(alone?.AUTH_SECRET).toBe("dev-only-billboard-secret-change-me");
+    expect(alone?.DATABASE_URL).toBeUndefined();
     const bundle = secretsFromEnv({
       DATABASE_URL: "postgresql://localhost/db",
       AUTH_SECRET: "dev-only-billboard-secret-change-me",
@@ -45,8 +49,8 @@ AUTH_SECRET='dev-only-billboard-secret-change-me'
 });
 
 describe("ledger store", () => {
-  it("names Supabase as the current store", () => {
+  it("names the Google Sheet as the current store", () => {
     const store = openLedgerStore({} as never);
-    expect(store.kind).toBe("supabase");
+    expect(store.kind).toBe("sheet");
   });
 });

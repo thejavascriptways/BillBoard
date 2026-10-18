@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/server/prisma-types";
 
 import { cardMonthFlags } from "@/core/card-month";
 import { remindersEnabled, type PaymentMode } from "@/core/due-on";

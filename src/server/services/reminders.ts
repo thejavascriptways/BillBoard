@@ -1,5 +1,5 @@
 import { channels } from "@/core/channels";
-import { planReminders } from "@/core/reminders";
+import { planReminders, type PlannedReminder } from "@/core/reminders";
 import { occurrenceStatus } from "@/core/status";
 import { addDays, chicagoMinutes, formatIsoDate, parseIsoDate, todayInChicago } from "@/lib/dates";
 import { toCents } from "@/lib/money";
@@ -82,7 +82,7 @@ export async function dispatchReminders(now = new Date()) {
     monthEndSent: Boolean(await prisma.reminderDelivery.findUnique({ where: { dedupeKey: `month_end:${today}` } })),
   });
 
-  const notifications = [];
+  const notifications: PlannedReminder[] = [];
   for (const item of planned) {
     try {
       await prisma.reminderDelivery.create({

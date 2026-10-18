@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import type { Prisma } from "@/server/prisma-types";
 
 import { prisma } from "@/server/db";
 import { fieldError } from "@/server/errors";

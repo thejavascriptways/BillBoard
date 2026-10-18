@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { CalendarDays, CreditCard, LayoutGrid, Library, Plus, Receipt, Settings, Zap } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { BillboardLogo } from "@/components/billboard-logo";
 import { PropertyScopeProvider, PropertySwitcher } from "@/components/property-scope";
@@ -31,6 +31,39 @@ function isActive(pathname: string, href: string): boolean {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [offline, setOffline] = useState<{ offline: boolean; pendingWrites: number } | null>(null);
+
+  useEffect(() => {
+    let stopped = false;
+    async function refresh() {
+      try {
+        const response = await fetch("/api/v1/data/status", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = (await response.json()) as { offline?: boolean; pendingWrites?: number };
+        if (stopped) return;
+        const next = { offline: Boolean(data.offline), pendingWrites: data.pendingWrites ?? 0 };
+        setOffline((current) => (current && current.offline === next.offline && current.pendingWrites === next.pendingWrites ? current : next));
+      } catch {
+        if (!stopped) setOffline((current) => ({ offline: true, pendingWrites: current?.pendingWrites ?? 0 }));
+      }
+    }
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 30_000);
+    function onVisible() {
+      if (document.visibilityState === "visible") {
+        void refresh();
+        void fetch("/api/v1/data/poll", { method: "POST" }).catch(() => undefined);
+      }
+    }
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -78,6 +111,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </nav>
           </aside>
           <div className="flex min-w-0 flex-col">
+            {offline?.offline ? (
+              <p className="bg-coral px-4 py-2 text-center text-sm font-medium text-coral-foreground" role="status">
+                Offline, {offline?.pendingWrites ?? 0} {offline?.pendingWrites === 1 ? "change" : "changes"} pending
+              </p>
+            ) : null}
             <header className="sticky top-0 z-30 flex flex-wrap items-center gap-3 bg-brand px-4 py-3 text-white md:px-8">
               <Link href="/" className="flex items-center gap-2.5 md:hidden">
                 <BillboardLogo className="size-9 rounded-[22%] ring-2 ring-white" />

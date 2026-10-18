@@ -1,5 +1,4 @@
-import type { Category, Expense, PaymentMethod, Property } from "@prisma/client";
-import { Prisma } from "@prisma/client";
+import { Prisma, type Category, type Expense, type PaymentMethod, type Property } from "@/server/prisma-types";
 
 import { toCsv } from "@/lib/csv";
 import { formatIsoDate, isIsoDate, parseIsoDate } from "@/lib/dates";

@@ -19,16 +19,22 @@ export function parseEnvFile(text: string): Record<string, string> {
 }
 
 export type SecretBundle = {
-  DATABASE_URL: string;
-  DIRECT_URL: string;
   AUTH_SECRET: string;
+  APP_PASSWORD?: string;
+  DATABASE_URL?: string;
+  DIRECT_URL?: string;
 };
 
 export function secretsFromEnv(env: Record<string, string | undefined>): SecretBundle | null {
+  const authSecret = env.AUTH_SECRET?.trim();
+  if (!authSecret || authSecret.length < 16) return null;
   const databaseUrl = env.DATABASE_URL?.trim();
   const directUrl = env.DIRECT_URL?.trim() || databaseUrl;
-  const authSecret = env.AUTH_SECRET?.trim();
-  if (!databaseUrl || !directUrl || !authSecret || authSecret.length < 16) return null;
-  if (!databaseUrl.startsWith("postgres")) return null;
-  return { DATABASE_URL: databaseUrl, DIRECT_URL: directUrl, AUTH_SECRET: authSecret };
+  if (databaseUrl && !databaseUrl.startsWith("postgres")) return null;
+  const appPassword = env.APP_PASSWORD?.trim();
+  return {
+    AUTH_SECRET: authSecret,
+    ...(appPassword ? { APP_PASSWORD: appPassword } : {}),
+    ...(databaseUrl && directUrl ? { DATABASE_URL: databaseUrl, DIRECT_URL: directUrl } : {}),
+  };
 }

@@ -1,12 +1,14 @@
 # BillBoard
 
-BillBoard is a private household ledger for the Mac. It runs on your computer, locks with a password (and Touch ID when the Mac offers it), and keeps the books in your Supabase project. The Due board, Utilities, credit cards, expenses, and spending are in the app. Configuration holds the master lists behind the dropdowns. Settings is for the lock, reminders, backup, and plugins.
+BillBoard is a private household ledger for the Mac. It runs on your computer, locks with a password (and Touch ID when the Mac offers it), and keeps the books in a Google Sheet named BillBoard inside a Drive folder of the same name. The Due board, Utilities, credit cards, expenses, and spending are in the app. Configuration holds the master lists behind the dropdowns. Settings is for the Google sheet, the lock, reminders, backup, and plugins.
 
 Dates are calendar days in `America/Chicago`. Amounts are USD. Nothing here connects to a bank, stores a card number, or moves money.
 
+The sheet is the only database. Postgres is used once, by Copy from Supabase, if you already have rows there.
+
 ## Local setup
 
-These steps are the same on Windows and macOS. You do not install Postgres, and you do not need Docker. The database is a free [Supabase](https://supabase.com) project. BillBoard reaches it through Prisma. Leave Supabase Auth off. In the browser, the family shares one password. The Mac app uses its own lock password instead.
+These steps are the same on Windows and macOS. You do not install Postgres, and you do not need Docker. In the browser, the family shares one password. The Mac app uses its own lock password instead.
 
 ### 1. Install Node.js
 
@@ -21,13 +23,17 @@ npm -v
 
 `node -v` should print `v22` or higher.
 
-### 2. Create the free database
+### 2. Create the Google Cloud project
 
-1. Sign in at [supabase.com](https://supabase.com/dashboard) and create a project on the free plan. Pick a database password and save it. You will not find it again in the dashboard.
-2. Wait until the project finishes starting. Open **Connect**.
-3. Copy the **transaction** pooler string (port **6543**) and the **session** pooler string (port **5432**, same pooler host). You do not need the anon key or the service role key.
+Do this once. The OAuth client is a Desktop app. The only Drive scope is `https://www.googleapis.com/auth/drive.file`, which is non-sensitive, so the app can be published to Production without Google's verification review. Refresh tokens from that scope do not expire after 7 days.
 
-If the database password contains characters such as `@`, `#`, `%`, or `/`, replace each one in the URL with its percent-encoding (`@` becomes `%40`, `#` becomes `%23`, `%` becomes `%25`, `/` becomes `%2F`). A password of `p@ss` that is not encoded makes Prisma fail to connect.
+1. Open [Google Cloud Console](https://console.cloud.google.com/) and create a project, for example `BillBoard`.
+2. Enable **Google Sheets API** and **Google Drive API**.
+3. Open **APIs & Services → OAuth consent screen**. Choose **External**. Add the app name `BillBoard` and your email as the support contact. On Scopes, add only `https://www.googleapis.com/auth/drive.file`, plus `openid` and `email` so Settings can show the signed-in account. Add yourself as a test user if the screen is still in Testing. Then **Publish** the app to **Production**.
+4. Open **APIs & Services → Credentials → Create credentials → OAuth client ID**. Application type: **Desktop app**. Name it `BillBoard`. Copy the client id and client secret. They stay in the macOS Keychain. Do not commit them.
+5. Optional: create an API key restricted to the Google Picker API if you want to re-select an existing spreadsheet after a reinstall. Without it, Settings lists spreadsheets this app created and accepts a pasted spreadsheet id.
+
+On first sign-in the app creates a Drive folder named `BillBoard` in My Drive, then a spreadsheet named `BillBoard` inside that folder, then the tabs. Encrypted backups can also go in a `Backups` folder inside that folder. That toggle is on by default, and the local backup folder is unchanged.
 
 ### 3. Create `.env`
 
@@ -45,21 +51,14 @@ Windows PowerShell:
 Copy-Item .env.example .env
 ```
 
-Open `.env` in any text editor and set four values:
+Open `.env` in any text editor and set two values:
 
 | Name | What to put |
 | --- | --- |
-| `DATABASE_URL` | The transaction pooler string, port **6543**, with `?pgbouncer=true&connection_limit=1&sslmode=require` on the end. The app uses this while it is running. |
-| `DIRECT_URL` | The session pooler string, port **5432**, with `?sslmode=require` on the end. Do not add `pgbouncer=true`. Migrations use this. |
-| `AUTH_SECRET` | A long random string, at least 16 characters. It signs the login cookie. It is not a Supabase secret. |
-| `APP_PASSWORD` | The one password the whole family will type. There are no accounts and no roles. |
+| `AUTH_SECRET` | A long random string, at least 16 characters. It signs the login cookie. |
+| `APP_PASSWORD` | The one password the whole family will type in the browser. There are no accounts and no roles. |
 
-```text
-DATABASE_URL="postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&sslmode=require"
-DIRECT_URL="postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres?sslmode=require"
-```
-
-Replace `[PROJECT-REF]`, `[PASSWORD]`, and `[REGION]` with the values from the Connect dialog. The host looks like `aws-0-us-east-1.pooler.supabase.com`.
+The OAuth client id, client secret, and refresh token are entered in the app and stored with Electron `safeStorage`. They are not environment variables.
 
 To make `AUTH_SECRET` on macOS or Linux:
 
@@ -73,24 +72,22 @@ On Windows PowerShell:
 -join ((1..32 | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) }))
 ```
 
-Do not commit `.env`. It holds the database password and the family password.
+Do not commit `.env`. It holds the family password.
 
-### 4. Install, create the tables, and run
+### 4. Install and run
 
 From the project folder:
 
 ```bash
 npm install
-npx prisma migrate deploy
-npm run db:seed
 npm run dev
 ```
 
-`prisma migrate deploy` uses `DIRECT_URL` and creates the tables. The seed adds a starter set you can change later. Then open [http://127.0.0.1:3847](http://127.0.0.1:3847). Anyone in the household signs in with `APP_PASSWORD`.
+Open [http://127.0.0.1:3847](http://127.0.0.1:3847). Anyone in the household signs in with `APP_PASSWORD`. Open Settings → Data, enter the desktop OAuth client id and secret, and sign in. On this dev server, without the Mac shell, Sign in creates a practice sheet on this computer so you can click through the screens. The Mac app opens Google in the system browser.
 
 Stop the app with Ctrl+C in that terminal.
 
-`npm run db:seed` creates a starting set you can rename, archive, reorder, or delete in Settings:
+A fresh practice sheet starts with homes and categories you can rename, archive, reorder, or delete:
 
 - **Little Elm Home**, **Celina Home**, and **Personal**
 - Starter categories (Mortgage, HOA, Property Tax, and the rest)
@@ -105,18 +102,15 @@ npm run db:clear-samples
 
 Or use **Clear sample expenses** in Settings.
 
-### Optional: Postgres in Docker
+### Copy an existing Supabase database once
 
-If Docker Desktop is already installed, you can skip Supabase for local work. Leave `DATABASE_URL` and `DIRECT_URL` as the values in `.env.example` (they are the same local URL), then:
+If the household already has rows in Postgres, put `DATABASE_URL` (and `DIRECT_URL`, if it differs) back in `.env` for this command only. Sign in under Settings → Data first so the BillBoard spreadsheet exists, then either click **Copy from Supabase** or run:
 
 ```bash
-docker compose up -d
-npx prisma migrate deploy
-npm run db:seed
-npm run dev
+npm run migrate:supabase-to-sheet
 ```
 
-That starts Postgres on port 5432 with user `billboard`, password `billboard`, and database `billboard`.
+The copy keeps ids when the sheet row is new. A starter home, category, person, payee, or label with the same slug or name is updated in place, and later rows point at that sheet id. Running it again does not add a second Little Elm. After the copy, the app never reads Postgres. You can remove `DATABASE_URL` from `.env`.
 
 ## Mac app
 
@@ -127,11 +121,9 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` with the Supabase URLs from the section above. URL-encode special characters in the database password (`@` is `%40`). Then:
+Edit `.env` with `AUTH_SECRET` and `APP_PASSWORD`. Then:
 
 ```bash
-npx prisma migrate deploy
-npm run db:seed
 npm run desktop:dev
 ```
 
@@ -140,16 +132,14 @@ If you already have the desktop app running, stop it, then:
 ```bash
 git pull
 npm install
-npx prisma migrate deploy
-npm run db:seed
 npm run desktop:dev
 ```
 
-`db:seed` updates the three properties and categories. It does not add sample bills. It removes expenses that were marked as samples.
-
 `desktop:dev` compiles the Electron shell and starts the production Next.js server on port 3921. The first window asks you to create a lock password. That password is hashed and stored in BillBoard’s app data, sealed with the macOS Keychain when the system allows it. It is not `APP_PASSWORD`. `APP_PASSWORD` is only for the browser at `npm run dev`.
 
-The menu bar icon stays after you close the window. Open BillBoard, Lock, and Quit are on that icon. In Settings, on this Mac, you can change the idle lock (default 10 minutes) and turn on launch at login. The app also locks when the Mac sleeps or the screen locks.
+Unlock, open Settings → Data, paste the desktop OAuth client id and secret, and choose Sign in with Google. The system browser returns to a loopback page on `127.0.0.1`. BillBoard creates the Drive folder and the spreadsheet, or reuses them if they are still there. If either was deleted, Settings offers to recreate it. To attach a sheet after a reinstall, use the Picker or paste the spreadsheet id.
+
+The menu bar icon stays after you close the window. Open BillBoard, Lock, and Quit are on that icon. In Settings, on this Mac, you can change the idle lock (default 10 minutes) and turn on launch at login. The app also locks when the Mac sleeps or the screen locks. While the window is open, BillBoard reloads sheet edits about once a minute and again when the Mac wakes.
 
 Build an unsigned Apple Silicon app:
 
@@ -157,53 +147,29 @@ Build an unsigned Apple Silicon app:
 npm run desktop:build
 ```
 
-The disk image is `dist/BillBoard-0.1.0-arm64.dmg`. The first time you open it, right-click the app and choose Open, because it is not signed. The packaged app does not read `.env`. The first window asks for `DATABASE_URL`, `DIRECT_URL`, and `AUTH_SECRET`, or you can import an existing `.env` file. Those values are stored with Electron `safeStorage` (the macOS Keychain).
-
-The database is still Supabase, encrypted at rest by Supabase. A local SQLCipher store can be added later behind `src/core/ledger-store.ts`. It is not built yet.
+The disk image is `dist/BillBoard-0.1.0-arm64.dmg`. The first time you open it, right-click the app and choose Open, because it is not signed. The packaged app does not read `.env`. The first window asks for `AUTH_SECRET` (and an optional `APP_PASSWORD`), or you can import an existing `.env` file. Those values are stored with Electron `safeStorage` (the macOS Keychain). Google credentials are stored the same way the first time you sign in.
 
 ## Scripts
 
 | Script | What it does |
 | --- | --- |
 | `npm run dev` | Dev server on port 3847 |
-| `npm run build` | Generate the Prisma client, apply migrations, production build |
+| `npm run build` | Production build. No database is required. |
 | `npm start` | Production server on port 3847 |
 | `npm test` | Unit tests plus a database round-trip for create, filter, update, export, and delete |
-| `npm run db:migrate` | Create a new migration during development |
-| `npm run db:deploy` | Apply committed migrations |
-| `npm run db:seed` | Seed starter properties, categories, payment methods, and sample expenses |
+| `npm run migrate:supabase-to-sheet` | One-time copy from Postgres into the sheet. Needs `DATABASE_URL`. |
+| `npm run db:seed` | Fill starter homes and categories in the local practice store |
 | `npm run db:clear-samples` | Delete rows marked as samples |
 | `npm run desktop:dev` | Mac (or Linux) app shell around the production server |
 | `npm run desktop:build` | Unsigned macOS arm64 `.dmg` on a Mac; a Linux folder build elsewhere |
 
-## Deploy on Vercel + Supabase (free tier)
+## Where it runs
 
-Postgres is a [Supabase](https://supabase.com) project on the free plan. Prisma is the only database client. Billboard does not use Supabase Auth, the Supabase client, or the anon and service-role keys. The family shares one password (`APP_PASSWORD`). There are no per-person accounts and no roles.
-
-1. Create a Supabase project. In the dashboard, open **Connect** and copy the pooler strings. You do not need to enable Auth.
-2. Push this repo to GitHub (or GitLab) and import it in [Vercel](https://vercel.com) on the Hobby plan. Framework preset: Next.js.
-3. Set these environment variables on the Vercel project. URL-encode special characters in the database password. Replace `[PROJECT-REF]`, `[PASSWORD]`, and `[REGION]` with the values from the Connect dialog (the host looks like `aws-0-us-east-1.pooler.supabase.com`).
-
-   | Name | Value |
-   | --- | --- |
-   | `DATABASE_URL` | Shared pooler, **transaction mode**, port **6543**. The running app uses this. Append `?pgbouncer=true&connection_limit=1&sslmode=require`. |
-   | `DIRECT_URL` | Shared pooler, **session mode**, port **5432** on that same pooler host. `prisma migrate deploy` uses this. Append `?sslmode=require`. Do not add `pgbouncer=true`. |
-   | `AUTH_SECRET` | `openssl rand -hex 32` |
-   | `APP_PASSWORD` | The one password the family shares |
-
-   ```text
-   DATABASE_URL="postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&sslmode=require"
-   DIRECT_URL="postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres?sslmode=require"
-   ```
-
-   The direct host `db.[PROJECT-REF].supabase.co:5432` is IPv6-only on the free plan. Vercel builds are IPv4, so migrations should use the session pooler above. Use the direct host only from a machine that has IPv6.
-
-4. Leave the build command as `npm run build`. That runs `prisma migrate deploy` (through `DIRECT_URL`) before `next build`. Prisma Client then queries through `DATABASE_URL`.
-5. Deploy. Open the Vercel URL. Everyone in the household signs in with `APP_PASSWORD`.
+BillBoard runs on the Mac, and `npm run dev` serves the same screens at `http://127.0.0.1:3847`. There is no hosted database. `AUTH_SECRET` and `APP_PASSWORD` are the only values the server needs. Google credentials stay in the Keychain.
 
 There is no public registration and no second login. The password check is the whole login. The session is an HttpOnly cookie. Do not commit `.env`.
 
-On an Android phone, open the site in Chrome and use the menu item **Install app** or **Add to Home screen**. The installed name is BillBoard. The Mac app is the one Deepak runs day to day.
+On an Android phone, the day-to-day app is the Mac. The browser on the same computer can be installed from Chrome with **Install app** or **Add to Home screen**. The installed name is BillBoard.
 
 ## API
 
@@ -255,8 +221,10 @@ Step 1 is the Mac shell. Steps 2–11 are the due-date MVP:
 - Default groups are Household, Insurance, Loans and overdrafts, Credit Cards, Kids' classes and fees, Medical, and Other. They have colors and can contain subgroups. People are a shared list used as cardholders and on medical bills.
 - Months roll forward on their own. Fixed bills keep their amount. Variable bills ask for the actual. Archived months are read-only. A year-matrix CSV is in Settings. Workbook (.xlsx) import is not in this version.
 
-Still later: loans, cash-flow forecasts, payoff planner, bank connections, SQLCipher, email/push/SMS delivery, and signed Mac builds.
+Still later: loans, cash-flow forecasts, payoff planner, bank connections, email/push/SMS delivery, and signed Mac builds.
 
 ## Not in this version
 
-Loans, cash-flow forecasts, a payoff planner, bank connections, receipt files, SQLCipher, and email, push, or SMS delivery. The Supabase tables for people, vehicles, occupancy, and payer splits have no screens yet. A person row is a name on the ledger, not a login.
+Loans, cash-flow forecasts, a payoff planner, bank connections, receipt files, and email, push, or SMS delivery. People, vehicles, occupancy, and payer splits are stored on the sheet and have no screens yet. A person row is a name on the ledger, not a login.
+
+Family edits in the Google Sheet show up in the app within about a minute, or when the window is focused. If someone changes a cell and leaves Updated at alone, the sheet still wins. If the app and the sheet both change the same row, the later Updated at wins. A row the app cannot read is listed under Settings → Data → Sheet issues and is skipped. Offline, the last copy opens from an encrypted cache on this computer and new edits wait in a banner: “Offline, N changes pending.” The sheet remains the source of truth when the computer is online again.
