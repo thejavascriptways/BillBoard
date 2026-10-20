@@ -51,6 +51,28 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+/** Google creates new grids at 1000 rows by 26 columns (A to Z). */
+const DEFAULT_COLUMNS = 26;
+const MIN_ROWS = 1000;
+
+type SpreadsheetMeta = {
+  sheets?: { properties?: { title?: string; sheetId?: number; gridProperties?: { rowCount?: number; columnCount?: number } } }[];
+};
+
+/** Prefix Google's own error message (for example a grid-limit reason) with ours. */
+async function googleError(response: Response, fallback: string): Promise<string> {
+  const text = await response.text().catch(() => "");
+  let reason = "";
+  try {
+    const parsed = JSON.parse(text) as { error?: { message?: string } };
+    reason = parsed.error?.message ?? "";
+  } catch {
+    reason = "";
+  }
+  reason = reason.replace(/\s+/g, " ").trim().slice(0, 300);
+  return reason ? `${fallback} Google said: ${reason}` : fallback;
+}
+
 export class FakeDrive implements SheetBackend {
   online = true;
   failStatus: number | null = null;
@@ -367,7 +389,10 @@ export class GoogleBackend implements SheetBackend {
     const existing = new Set((meta.sheets ?? []).map((sheet) => sheet.properties?.title).filter(Boolean));
     const requests: Record<string, unknown>[] = [];
     for (const title of TAB_ORDER) {
-      if (!existing.has(title)) requests.push({ addSheet: { properties: { title } } });
+      if (existing.has(title)) continue;
+      // New grids default to 1000 x 26. Size each tab for its columns up front.
+      const gridProperties = { rowCount: MIN_ROWS, columnCount: Math.max(DEFAULT_COLUMNS, columnsForTab(title).length) };
+      requests.push({ addSheet: { properties: { title, gridProperties } } });
     }
     if (requests.length > 0) {
       await this.batch(spreadsheetId, requests);
@@ -380,12 +405,18 @@ export class GoogleBackend implements SheetBackend {
       const sheetId = sheet?.properties?.sheetId;
       if (sheetId == null) continue;
       const columns = columnsForTab(title);
+      // Tabs left by an earlier attempt can still be 26 columns wide. Grow them before
+      // any request below touches a column past Z, or Sheets rejects the whole batch.
+      const grid = sheet?.properties?.gridProperties ?? {};
+      const columnCount = Math.max(grid.columnCount ?? DEFAULT_COLUMNS, columns.length);
+      const rowCount = Math.max(grid.rowCount ?? MIN_ROWS, MIN_ROWS);
       format.push({
         updateSheetProperties: {
-          properties: { sheetId, gridProperties: { frozenRowCount: 1 } },
-          fields: "gridProperties.frozenRowCount",
+          properties: { sheetId, gridProperties: { frozenRowCount: 1, rowCount, columnCount } },
+          fields: "gridProperties.frozenRowCount,gridProperties.rowCount,gridProperties.columnCount",
         },
       });
+      if (columns.length === 0) continue;
       format.push({
         repeatCell: {
           range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: columns.length },
@@ -394,10 +425,11 @@ export class GoogleBackend implements SheetBackend {
         },
       });
       columns.forEach((column, index) => {
-        if (column.enumValues) {
+        const range = { sheetId, startRowIndex: 1, endRowIndex: MIN_ROWS, startColumnIndex: index, endColumnIndex: index + 1 };
+        if (column.enumValues && column.enumValues.length > 0) {
           format.push({
             setDataValidation: {
-              range: { sheetId, startRowIndex: 1, endRowIndex: 1000, startColumnIndex: index, endColumnIndex: index + 1 },
+              range,
               rule: {
                 condition: { type: "ONE_OF_LIST", values: column.enumValues.map((value) => ({ userEnteredValue: value })) },
                 showCustomUi: true,
@@ -408,14 +440,14 @@ export class GoogleBackend implements SheetBackend {
         } else if (column.kind === "date") {
           format.push({
             setDataValidation: {
-              range: { sheetId, startRowIndex: 1, endRowIndex: 1000, startColumnIndex: index, endColumnIndex: index + 1 },
+              range,
               rule: { condition: { type: "DATE_IS_VALID" }, showCustomUi: true, strict: false },
             },
           });
         } else if (column.kind === "decimal") {
           format.push({
             setDataValidation: {
-              range: { sheetId, startRowIndex: 1, endRowIndex: 1000, startColumnIndex: index, endColumnIndex: index + 1 },
+              range,
               rule: { condition: { type: "NUMBER_GREATER_THAN_EQ", values: [{ userEnteredValue: "-1000000000" }] }, showCustomUi: true, strict: false },
             },
           });
@@ -424,8 +456,9 @@ export class GoogleBackend implements SheetBackend {
       const current = await this.readRange(spreadsheetId, `'${title}'!1:1`);
       if (!current[0] || current[0].every((cell) => !cell)) headerUpdates.push({ range: `'${title}'!A1`, values: [headerRow(title)] });
     }
+    const ours = (fresh.sheets ?? []).filter((item) => TAB_ORDER.includes(item.properties?.title ?? ""));
     const sheet1 = fresh.sheets?.find((item) => item.properties?.title === "Sheet1");
-    if (sheet1?.properties?.sheetId != null && (fresh.sheets?.length ?? 0) > 1) {
+    if (sheet1?.properties?.sheetId != null && ours.length > 0) {
       format.push({ deleteSheet: { sheetId: sheet1.properties.sheetId } });
     }
     if (format.length > 0) await this.batch(spreadsheetId, format);
@@ -447,13 +480,13 @@ export class GoogleBackend implements SheetBackend {
       method: "POST",
       body: JSON.stringify({ valueInputOption: "RAW", data: updates }),
     });
-    if (!response.ok) throw new SheetHttpError(response.status, "Could not write the spreadsheet.");
+    if (!response.ok) throw new SheetHttpError(response.status, await googleError(response, "Could not write the spreadsheet."));
   }
 
-  private async spreadsheet(id: string): Promise<{ sheets?: { properties?: { title?: string; sheetId?: number } }[] }> {
+  private async spreadsheet(id: string): Promise<SpreadsheetMeta> {
     const response = await this.request(`https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=sheets.properties`, {});
-    if (!response.ok) throw new SheetHttpError(response.status, "Could not open the spreadsheet.");
-    return (await response.json()) as { sheets?: { properties?: { title?: string; sheetId?: number } }[] };
+    if (!response.ok) throw new SheetHttpError(response.status, await googleError(response, "Could not open the spreadsheet."));
+    return (await response.json()) as SpreadsheetMeta;
   }
 
   private async batch(id: string, requests: Record<string, unknown>[]): Promise<void> {
@@ -461,7 +494,11 @@ export class GoogleBackend implements SheetBackend {
       method: "POST",
       body: JSON.stringify({ requests }),
     });
-    if (!response.ok) throw new SheetHttpError(response.status, "Could not set up the spreadsheet tabs.");
+    if (!response.ok) {
+      const message = await googleError(response, "Could not set up the spreadsheet tabs.");
+      console.error("[sheet-batch]", response.status, message);
+      throw new SheetHttpError(response.status, message);
+    }
   }
 
   private async readRange(id: string, range: string): Promise<string[][]> {

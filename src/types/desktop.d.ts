@@ -11,6 +11,9 @@ export type BackupStatus = { folder: string; hasPassword: boolean };
 
 export type DesktopResult = { ok: true } | { ok: false; error: string };
 
+/** Saved Google OAuth keys. The secret and Picker key never leave the main process. */
+export type GoogleKeyStatus = { clientId: string; hasSecret: boolean; hasPickerKey: boolean };
+
 export type DesktopBridge = {
   status: () => Promise<DesktopStatus>;
   setupPassword: (password: string) => Promise<DesktopResult>;
@@ -20,6 +23,7 @@ export type DesktopBridge = {
   setPreferences: (prefs: { autoLockMinutes?: number; openAtLogin?: boolean }) => Promise<DesktopStatus>;
   saveSecrets: (input: { databaseUrl?: string; directUrl?: string; authSecret: string; appPassword?: string }) => Promise<DesktopResult>;
   connectGoogle?: (input: { clientId: string; clientSecret: string; pickerApiKey?: string }) => Promise<DesktopResult & { email?: string }>;
+  googleKeys?: () => Promise<GoogleKeyStatus>;
   disconnectGoogle?: () => Promise<DesktopResult>;
   pickSheet?: () => Promise<{ ok: true; spreadsheetId?: string } | { ok: false; error: string }>;
   importEnv: () => Promise<DesktopResult>;

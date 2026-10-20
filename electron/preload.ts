@@ -12,6 +12,7 @@ const bridge = {
     ipcRenderer.invoke("desktop:save-secrets", input),
   connectGoogle: (input: { clientId: string; clientSecret: string; pickerApiKey?: string }) =>
     ipcRenderer.invoke("desktop:connect-google", input),
+  googleKeys: () => ipcRenderer.invoke("desktop:google-keys"),
   disconnectGoogle: () => ipcRenderer.invoke("desktop:disconnect-google"),
   pickSheet: () => ipcRenderer.invoke("desktop:pick-sheet"),
   pickSheetResult: (spreadsheetId: string) => ipcRenderer.send("desktop:pick-sheet-result", spreadsheetId),

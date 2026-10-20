@@ -29,6 +29,8 @@ export function DataSettings() {
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
   const [pickerKey, setPickerKey] = useState("");
+  const [savedSecret, setSavedSecret] = useState(false);
+  const [savedPicker, setSavedPicker] = useState(false);
   const [spreadsheetId, setSpreadsheetId] = useState("");
   const [sheets, setSheets] = useState<SheetFile[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -42,8 +44,22 @@ export function DataSettings() {
       .catch((caught: unknown) => setError(caught instanceof ApiError ? caught.message : "Could not load the sheet."));
   }
 
+  function loadKeys() {
+    const desktop = window.billboardDesktop;
+    if (!desktop?.googleKeys) return;
+    desktop
+      .googleKeys()
+      .then((keys) => {
+        if (keys.clientId) setClientId((current) => current || keys.clientId);
+        setSavedSecret(keys.hasSecret);
+        setSavedPicker(keys.hasPickerKey);
+      })
+      .catch(() => undefined);
+  }
+
   useEffect(() => {
     load();
+    loadKeys();
   }, []);
 
   async function connect() {
@@ -71,6 +87,11 @@ export function DataSettings() {
       setError(caught instanceof Error ? caught.message : "Could not connect.");
     } finally {
       setBusy(false);
+      if (window.billboardDesktop?.googleKeys) {
+        setClientSecret("");
+        setPickerKey("");
+        loadKeys();
+      }
     }
   }
 
@@ -105,7 +126,7 @@ export function DataSettings() {
   async function pick() {
     setError(null);
     const desktop = window.billboardDesktop;
-    if (desktop?.pickSheet && pickerKey) {
+    if (desktop?.pickSheet && (pickerKey || savedPicker)) {
       const result = await desktop.pickSheet();
       if (result.ok && result.spreadsheetId) {
         await adopt(result.spreadsheetId);
@@ -170,11 +191,40 @@ export function DataSettings() {
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="google-client-secret">OAuth client secret</Label>
-            <Input id="google-client-secret" type="password" value={clientSecret} onChange={(event) => setClientSecret(event.target.value)} autoComplete="off" className="h-12!" required />
+            <Input
+              id="google-client-secret"
+              type="password"
+              value={clientSecret}
+              onChange={(event) => setClientSecret(event.target.value)}
+              autoComplete="off"
+              className="h-12!"
+              placeholder={savedSecret ? "••••••••••••  Saved" : undefined}
+              aria-describedby={savedSecret ? "google-client-secret-saved" : undefined}
+              required={!savedSecret}
+            />
+            {savedSecret ? (
+              <p id="google-client-secret-saved" className="text-xs text-muted-foreground">
+                Saved on this Mac. Leave blank to keep it, or paste a new one.
+              </p>
+            ) : null}
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="google-picker-key">Picker API key (optional)</Label>
-            <Input id="google-picker-key" value={pickerKey} onChange={(event) => setPickerKey(event.target.value)} autoComplete="off" className="h-12!" />
+            <Input
+              id="google-picker-key"
+              type={savedPicker ? "password" : "text"}
+              value={pickerKey}
+              onChange={(event) => setPickerKey(event.target.value)}
+              autoComplete="off"
+              className="h-12!"
+              placeholder={savedPicker ? "••••••••••••  Saved" : undefined}
+              aria-describedby={savedPicker ? "google-picker-key-saved" : undefined}
+            />
+            {savedPicker ? (
+              <p id="google-picker-key-saved" className="text-xs text-muted-foreground">
+                Saved on this Mac. Leave blank to keep it.
+              </p>
+            ) : null}
           </div>
           <Button type="submit" className="h-11! w-fit" disabled={busy}>
             Sign in with Google

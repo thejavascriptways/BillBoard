@@ -1,5 +1,5 @@
 import { readCache, writeCache } from "@/server/sheet/cache";
-import { FakeDrive, GoogleBackend, type SheetBackend } from "@/server/sheet/backend";
+import { FakeDrive, GoogleBackend, type DriveFile, type SheetBackend } from "@/server/sheet/backend";
 import { SheetLedger, metaUpdates } from "@/server/sheet/ledger";
 import { MemoryDb } from "@/server/sheet/memory-db";
 import { copyFromSource, type MigrateCounts, type SourceDump } from "@/server/sheet/migrate";
@@ -303,6 +303,17 @@ export class DataRuntime {
     if (this.folderId && !folder) this.missing = "folder";
     else if (this.spreadsheetId && !sheet) this.missing = "sheet";
     else this.missing = null;
+    if (!folder && !sheet && create && !this.folderId && !this.spreadsheetId) {
+      // A failed or interrupted setup can leave a BillBoard folder and spreadsheet behind
+      // without their ids being saved. Reuse them instead of making another pair.
+      const found = await this.findBooks();
+      if (found) {
+        folder = found.folder;
+        sheet = found.sheet;
+        this.folderId = found.folder.id;
+        this.spreadsheetId = found.sheet?.id ?? null;
+      }
+    }
     if (!folder && create) {
       folder = await this.backend.createFolder(FOLDER_NAME, null);
       this.folderId = folder.id;
@@ -328,6 +339,18 @@ export class DataRuntime {
     } else await this.ledger?.reload();
     this.startPoll();
     await this.ledger?.noteModified();
+  }
+
+  private async findBooks(): Promise<{ folder: DriveFile; sheet: DriveFile | null } | null> {
+    const newest = (a: DriveFile, b: DriveFile) => b.modifiedTime.localeCompare(a.modifiedTime);
+    const folders = (await this.backend.listFiles(FOLDER_MIME)).filter((file) => file.name === FOLDER_NAME).sort(newest);
+    if (folders.length === 0) return null;
+    const sheets = (await this.backend.listFiles(SHEET_MIME)).filter((file) => file.name === SPREADSHEET_NAME).sort(newest);
+    for (const folder of folders) {
+      const sheet = sheets.find((file) => file.parents.includes(folder.id));
+      if (sheet) return { folder, sheet };
+    }
+    return { folder: folders[0], sheet: null };
   }
 
   private async ensureBackups(): Promise<void> {

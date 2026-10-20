@@ -157,6 +157,18 @@ function origin(): string {
   return `http://127.0.0.1:${PORT}`;
 }
 
+/** The error text from one of our own API responses, for showing in Settings. */
+async function serverMessage(response: Response): Promise<string> {
+  const text = await response.text().catch(() => "");
+  try {
+    const parsed = JSON.parse(text) as { error?: string | { message?: string }; message?: string };
+    const message = typeof parsed.error === "string" ? parsed.error : parsed.error?.message ?? parsed.message ?? "";
+    return message.slice(0, 400);
+  } catch {
+    return "";
+  }
+}
+
 function result(error?: string): { ok: true } | { ok: false; error: string } {
   return error ? { ok: false, error } : { ok: true };
 }
@@ -391,6 +403,33 @@ function writeGoogle(session: GoogleSession | null): void {
   }
   fs.mkdirSync(app.getPath("userData"), { recursive: true });
   fs.writeFileSync(file, seal(JSON.stringify(session)));
+}
+
+type GoogleKeys = { clientId: string; clientSecret: string; pickerApiKey?: string };
+
+/** OAuth client id, secret and Picker key, sealed with safeStorage. Kept across failed sign-ins and disconnects. */
+function readGoogleKeys(): GoogleKeys | null {
+  const file = userFile("google-keys.bin");
+  if (fs.existsSync(file)) {
+    try {
+      return JSON.parse(openSealed(fs.readFileSync(file))) as GoogleKeys;
+    } catch {
+      return null;
+    }
+  }
+  const google = readGoogle();
+  return google ? { clientId: google.clientId, clientSecret: google.clientSecret, pickerApiKey: google.pickerApiKey } : null;
+}
+
+function writeGoogleKeys(keys: GoogleKeys): void {
+  fs.mkdirSync(app.getPath("userData"), { recursive: true });
+  fs.writeFileSync(userFile("google-keys.bin"), seal(JSON.stringify(keys)));
+}
+
+/** What the settings page may see: the client id, and only whether a secret and Picker key are saved. */
+function googleKeyStatus(): { clientId: string; hasSecret: boolean; hasPickerKey: boolean } {
+  const keys = readGoogleKeys();
+  return { clientId: keys?.clientId ?? "", hasSecret: Boolean(keys?.clientSecret), hasPickerKey: Boolean(keys?.pickerApiKey) };
 }
 
 function serverEnv(bundle: SecretBundle): NodeJS.ProcessEnv {
@@ -711,13 +750,18 @@ function registerIpc(): void {
     writeBackupFile(input.filename, input.fileBase64);
     return result();
   });
+  ipcMain.handle("desktop:google-keys", () => googleKeyStatus());
   ipcMain.handle("desktop:connect-google", async (_event, input: { clientId?: string; clientSecret?: string; pickerApiKey?: string }) => {
     try {
-      const session = await signInWithGoogle({
-        clientId: String(input?.clientId ?? ""),
-        clientSecret: String(input?.clientSecret ?? ""),
-        pickerApiKey: input?.pickerApiKey,
-      });
+      // Blank fields mean "keep what is saved". Save before Google sign-in so a failed
+      // or abandoned attempt never makes him paste the keys again.
+      const saved = readGoogleKeys();
+      const clientId = String(input?.clientId ?? "").trim() || saved?.clientId || "";
+      const clientSecret = String(input?.clientSecret ?? "").trim() || saved?.clientSecret || "";
+      const pickerApiKey = String(input?.pickerApiKey ?? "").trim() || saved?.pickerApiKey || undefined;
+      if (!clientId || !clientSecret) return result("Enter the desktop OAuth client id and secret.");
+      writeGoogleKeys({ clientId, clientSecret, pickerApiKey });
+      const session = await signInWithGoogle({ clientId, clientSecret, pickerApiKey });
       const previous = readGoogle();
       const next: GoogleSession = {
         ...session,
@@ -736,7 +780,11 @@ function registerIpc(): void {
         folderId: next.folderId,
         spreadsheetId: next.spreadsheetId,
       });
-      if (!response.ok) return result("Could not open the BillBoard spreadsheet.");
+      if (!response.ok) {
+        const message = await serverMessage(response);
+        console.error("[connect-google]", response.status, message);
+        return result(message || "Could not open the BillBoard spreadsheet.");
+      }
       const status = (await response.json()) as { folderId?: string; spreadsheetId?: string; backupsFolderId?: string };
       writeGoogle({
         ...next,
