@@ -1,4 +1,4 @@
-import type { Person } from "@prisma/client";
+import type { Person } from "@/server/prisma-types";
 
 import { prisma } from "@/server/db";
 import { ServiceError } from "@/server/errors";

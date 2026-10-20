@@ -1,4 +1,4 @@
-import type { Property, PropertyKind, PropertyStatus } from "@prisma/client";
+import type { Property, PropertyKind, PropertyStatus } from "@/server/prisma-types";
 
 import { formatIsoDate, isIsoDate, parseIsoDate } from "@/lib/dates";
 import type { PropertyDTO } from "@/lib/types";

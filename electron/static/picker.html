@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Choose BillBoard spreadsheet</title>
+  </head>
+  <body>
+    <p>Opening the Google Drive picker…</p>
+    <script src="https://apis.google.com/js/api.js"></script>
+    <script>
+      const params = new URLSearchParams(location.search);
+      const token = params.get("token") || "";
+      const key = params.get("key") || "";
+      function show() {
+        gapi.load("picker", function () {
+          const view = new google.picker.DocsView(google.picker.ViewId.SPREADSHEETS);
+          view.setMimeTypes("application/vnd.google-apps.spreadsheet");
+          const picker = new google.picker.PickerBuilder()
+            .addView(view)
+            .setOAuthToken(token)
+            .setDeveloperKey(key)
+            .setTitle("Choose the BillBoard spreadsheet")
+            .setCallback(function (data) {
+              if (data.action === google.picker.Action.PICKED && data.docs && data.docs[0]) {
+                window.billboardDesktop.pickSheetResult(data.docs[0].id);
+              }
+              if (data.action === google.picker.Action.CANCEL) window.billboardDesktop.pickSheetResult("");
+            })
+            .build();
+          picker.setVisible(true);
+        });
+      }
+      window.onload = show;
+    </script>
+  </body>
+</html>

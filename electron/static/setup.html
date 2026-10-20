@@ -37,23 +37,19 @@
   <body>
     <main>
       <img src="logo.png" alt="" />
-      <h1>Connect BillBoard</h1>
+      <h1>Set up BillBoard</h1>
       <p>
-        Paste the Supabase connection strings. They are saved in the macOS Keychain on this Mac, not in a file you commit.
-        If the database password contains @, #, or %, encode it in the URL (@ becomes %40).
+        The books live in a Google Sheet in your Drive. This step only saves the lock-cookie secret on this Mac, in the Keychain.
+        After you unlock, open Settings and choose Data to sign in with Google.
       </p>
       <form id="form">
         <div>
-          <label for="database">DATABASE_URL (transaction pooler, port 6543)</label>
-          <textarea id="database" required spellcheck="false" placeholder="postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&sslmode=require"></textarea>
-        </div>
-        <div>
-          <label for="direct">DIRECT_URL (session pooler, port 5432)</label>
-          <textarea id="direct" required spellcheck="false" placeholder="postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:5432/postgres?sslmode=require"></textarea>
-        </div>
-        <div>
           <label for="secret">AUTH_SECRET</label>
           <input id="secret" required spellcheck="false" placeholder="A long random string, at least 16 characters" />
+        </div>
+        <div>
+          <label for="password">APP_PASSWORD (browser sign-in, optional)</label>
+          <input id="password" type="password" spellcheck="false" placeholder="The password the family types in the browser" />
         </div>
         <p class="error" id="error" role="alert"></p>
         <div class="row">
@@ -69,9 +65,8 @@
         event.preventDefault();
         error.textContent = "";
         const result = await window.billboardDesktop.saveSecrets({
-          databaseUrl: document.getElementById("database").value,
-          directUrl: document.getElementById("direct").value,
           authSecret: document.getElementById("secret").value,
+          appPassword: document.getElementById("password").value,
         });
         if (!result.ok) error.textContent = result.error;
       });

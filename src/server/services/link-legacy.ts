@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@/server/prisma-types";
 
 /** Copy free-text issuers and expense payees into the master tables. Never renames an existing row. */
 export async function linkLegacyMasters(client: PrismaClient | Prisma.TransactionClient, householdId: string) {

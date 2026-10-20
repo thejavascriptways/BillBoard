@@ -1,4 +1,4 @@
-import type { PaymentMethod } from "@prisma/client";
+import type { PaymentMethod } from "@/server/prisma-types";
 
 import { paymentMethodLabel } from "@/lib/labels";
 import type { PaymentMethodDTO } from "@/lib/types";

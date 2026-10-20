@@ -1,4 +1,4 @@
-import type { Category } from "@prisma/client";
+import type { Category } from "@/server/prisma-types";
 
 import type { CategoryDTO } from "@/lib/types";
 import { prisma } from "@/server/db";

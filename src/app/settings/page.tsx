@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { DataSettings } from "@/components/data-settings";
 import { DesktopSettings } from "@/components/desktop-settings";
 import { HouseholdSettings } from "@/components/household-settings";
 
@@ -15,6 +16,7 @@ export default function SettingsPage() {
         Homes, utility types, categories, providers, and the other lists live in{" "}
         <Link href="/configuration" className="font-medium text-primary">Configuration</Link>.
       </p>
+      <DataSettings />
       <HouseholdSettings />
       <DesktopSettings />
     </div>

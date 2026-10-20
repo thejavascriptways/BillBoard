@@ -1,5 +1,5 @@
 import { pathToFileURL } from "node:url";
-import { PrismaClient, type PropertyKind, type PropertyStatus } from "@prisma/client";
+import type { PrismaClient, PropertyKind, PropertyStatus } from "../src/server/prisma-types";
 
 import { prisma as sharedPrisma } from "../src/server/db";
 import { linkLegacyMasters } from "../src/server/services/link-legacy";

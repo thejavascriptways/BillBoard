@@ -21,6 +21,10 @@
 # electron
 /electron-dist/
 /dist/
+.desktop-dev.log
+
+# encrypted local cache of the sheet. Not the source of truth.
+.billboard/
 
 # production
 /build

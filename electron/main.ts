@@ -21,6 +21,7 @@ import {
 } from "electron";
 
 import { parseEnvFile, secretsFromEnv, type SecretBundle } from "./env-file";
+import { signInWithGoogle, type GoogleSession } from "./google";
 import { clampAutoLockMinutes, hashLockPassword, verifyLockPassword, type LockHash } from "./password";
 
 const APP_TITLE = "BillBoard";
@@ -372,7 +373,28 @@ function createWindow(): BrowserWindow {
   return win;
 }
 
+function readGoogle(): GoogleSession | null {
+  const file = userFile("google.bin");
+  if (!fs.existsSync(file)) return null;
+  try {
+    return JSON.parse(openSealed(fs.readFileSync(file))) as GoogleSession;
+  } catch {
+    return null;
+  }
+}
+
+function writeGoogle(session: GoogleSession | null): void {
+  const file = userFile("google.bin");
+  if (!session) {
+    if (fs.existsSync(file)) fs.rmSync(file);
+    return;
+  }
+  fs.mkdirSync(app.getPath("userData"), { recursive: true });
+  fs.writeFileSync(file, seal(JSON.stringify(session)));
+}
+
 function serverEnv(bundle: SecretBundle): NodeJS.ProcessEnv {
+  const google = readGoogle();
   return {
     ...process.env,
     ...bundle,
@@ -381,6 +403,17 @@ function serverEnv(bundle: SecretBundle): NodeJS.ProcessEnv {
     HOSTNAME: "127.0.0.1",
     BILLBOARD_DESKTOP: "1",
     BILLBOARD_DESKTOP_TOKEN: desktopToken,
+    ...(google
+      ? {
+          BILLBOARD_GOOGLE_ACCESS_TOKEN: google.accessToken,
+          BILLBOARD_GOOGLE_REFRESH_TOKEN: google.refreshToken,
+          BILLBOARD_GOOGLE_CLIENT_ID: google.clientId,
+          BILLBOARD_GOOGLE_CLIENT_SECRET: google.clientSecret,
+          BILLBOARD_GOOGLE_EMAIL: google.email,
+          ...(google.spreadsheetId ? { BILLBOARD_SPREADSHEET_ID: google.spreadsheetId } : {}),
+          ...(google.folderId ? { BILLBOARD_FOLDER_ID: google.folderId } : {}),
+        }
+      : {}),
   };
 }
 
@@ -426,9 +459,7 @@ async function startServer(bundle: SecretBundle): Promise<void> {
     standalone = path.join(process.resourcesPath, "standalone");
   } else {
     const root = app.getAppPath();
-    const prisma = path.join(root, "node_modules", ".bin", "prisma");
     const nextBin = path.join(root, "node_modules", ".bin", "next");
-    await runCommand(prisma, ["migrate", "deploy"], root, env);
     if (!fs.existsSync(path.join(root, ".next", "standalone", "server.js"))) {
       await runCommand(nextBin, ["build"], root, env);
     }
@@ -543,7 +574,10 @@ async function runMaintenance(): Promise<void> {
 function startReminderWatch(): void {
   if (reminderTimer) clearInterval(reminderTimer);
   reminderTimer = setInterval(() => void runMaintenance(), 3 * 60 * 1000);
-  powerMonitor.on("resume", () => void runMaintenance());
+  powerMonitor.on("resume", () => {
+    void runMaintenance();
+    void desktopFetch("/api/v1/data/poll", {}).catch(() => undefined);
+  });
   void runMaintenance();
 }
 
@@ -609,15 +643,16 @@ function registerIpc(): void {
     "desktop:save-secrets",
     async (
       _event,
-      input: { databaseUrl?: string; directUrl?: string; authSecret?: string },
+      input: { databaseUrl?: string; directUrl?: string; authSecret?: string; appPassword?: string },
     ) => {
       const bundle = secretsFromEnv({
         DATABASE_URL: input.databaseUrl,
         DIRECT_URL: input.directUrl,
         AUTH_SECRET: input.authSecret,
+        APP_PASSWORD: input.appPassword,
       });
       if (!bundle) {
-        return result("Check the two Postgres URLs and use an AUTH_SECRET of at least 16 characters. Encode @ as %40 in the password.");
+        return result("Use an AUTH_SECRET of at least 16 characters.");
       }
       writePackagedSecrets(bundle);
       if (!server) {
@@ -641,7 +676,7 @@ function registerIpc(): void {
     const parsed = parseEnvFile(fs.readFileSync(picked.filePaths[0], "utf8"));
     const bundle = secretsFromEnv(parsed);
     if (!bundle) {
-      return result("That file needs DATABASE_URL and AUTH_SECRET. Encode special characters in the database password.");
+      return result("That file needs an AUTH_SECRET of at least 16 characters.");
     }
     writePackagedSecrets(bundle);
     try {
@@ -675,6 +710,75 @@ function registerIpc(): void {
     if (!input?.filename || !input.fileBase64) return result("Nothing to save.");
     writeBackupFile(input.filename, input.fileBase64);
     return result();
+  });
+  ipcMain.handle("desktop:connect-google", async (_event, input: { clientId?: string; clientSecret?: string; pickerApiKey?: string }) => {
+    try {
+      const session = await signInWithGoogle({
+        clientId: String(input?.clientId ?? ""),
+        clientSecret: String(input?.clientSecret ?? ""),
+        pickerApiKey: input?.pickerApiKey,
+      });
+      const previous = readGoogle();
+      const next: GoogleSession = {
+        ...session,
+        folderId: previous?.folderId,
+        spreadsheetId: previous?.spreadsheetId,
+        backupsFolderId: previous?.backupsFolderId,
+      };
+      writeGoogle(next);
+      const response = await desktopFetch("/api/v1/data/connect", {
+        accessToken: next.accessToken,
+        refreshToken: next.refreshToken,
+        clientId: next.clientId,
+        clientSecret: next.clientSecret,
+        email: next.email,
+        pickerApiKey: next.pickerApiKey,
+        folderId: next.folderId,
+        spreadsheetId: next.spreadsheetId,
+      });
+      if (!response.ok) return result("Could not open the BillBoard spreadsheet.");
+      const status = (await response.json()) as { folderId?: string; spreadsheetId?: string; backupsFolderId?: string };
+      writeGoogle({
+        ...next,
+        folderId: status.folderId || next.folderId,
+        spreadsheetId: status.spreadsheetId || next.spreadsheetId,
+        backupsFolderId: status.backupsFolderId || next.backupsFolderId,
+      });
+      return { ok: true as const, email: next.email };
+    } catch (error) {
+      return result(error instanceof Error ? error.message : "Could not sign in with Google.");
+    }
+  });
+  ipcMain.handle("desktop:disconnect-google", async () => {
+    writeGoogle(null);
+    await desktopFetch("/api/v1/data/disconnect", {}).catch(() => undefined);
+    return result();
+  });
+  ipcMain.handle("desktop:pick-sheet", async () => {
+    const google = readGoogle();
+    if (!google?.pickerApiKey || !google.accessToken) {
+      return { ok: false as const, error: "Add a Picker API key, or choose a spreadsheet from the list." };
+    }
+    const picked = await new Promise<string>((resolve) => {
+      const window = new BrowserWindow({
+        width: 960,
+        height: 720,
+        title: "Choose spreadsheet",
+        webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: false },
+      });
+      ipcMain.once("desktop:pick-sheet-result", (_event, spreadsheetId: string) => {
+        resolve(String(spreadsheetId ?? ""));
+        if (!window.isDestroyed()) window.close();
+      });
+      const query = new URLSearchParams({ token: google.accessToken, key: google.pickerApiKey ?? "" });
+      void window.loadFile(staticFile("picker.html"), { search: query.toString() });
+    });
+    if (!picked) return { ok: false as const, error: "No spreadsheet selected." };
+    const response = await desktopFetch("/api/v1/data/adopt", { spreadsheetId: picked });
+    if (!response.ok) return { ok: false as const, error: "BillBoard could not open that spreadsheet." };
+    const status = (await response.json()) as { folderId?: string; spreadsheetId?: string; backupsFolderId?: string };
+    writeGoogle({ ...google, folderId: status.folderId, spreadsheetId: status.spreadsheetId, backupsFolderId: status.backupsFolderId });
+    return { ok: true as const, spreadsheetId: picked };
   });
 }
 

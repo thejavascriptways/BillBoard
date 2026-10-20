@@ -1,8 +1,8 @@
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/server/prisma-types";
 
 import { decryptBackup, encryptBackup } from "@/core/backup-crypto";
 import { formatIsoDate, isIsoDate, parseIsoDate, todayInChicago } from "@/lib/dates";
-import { prisma } from "@/server/db";
+import { dataRuntime, prisma } from "@/server/db";
 import { ServiceError } from "@/server/errors";
 import { getHousehold } from "@/server/services/household";
 import { getPrefs, updatePrefs } from "@/server/services/prefs";
@@ -85,7 +85,9 @@ export async function exportEncrypted(password: string): Promise<{ filename: str
   const payload = await buildBackup();
   const bytes = await encryptBackup(JSON.stringify(payload), password);
   const day = payload.exportedAt.slice(0, 10);
-  return { filename: `billboard-backup-${day}.billboard`, bytes };
+  const filename = `billboard-backup-${day}.billboard`;
+  await dataRuntime.uploadBackup(filename, bytes).catch(() => undefined);
+  return { filename, bytes };
 }
 
 function asRecord(value: unknown, label: string): Record<string, unknown> {
