@@ -34,6 +34,9 @@ export type SheetGrid = {
 
 export type ValueUpdate = { range: string; values: string[][] };
 
+/** Whole sheet rows to remove, by 1-based row number in each tab. */
+export type RowDeletion = { title: string; rows: number[] };
+
 export type SheetBackend = {
   online: boolean;
   createFolder(name: string, parentId: string | null): Promise<DriveFile>;
@@ -45,6 +48,7 @@ export type SheetBackend = {
   ensureTabs(spreadsheetId: string): Promise<void>;
   readTabs(spreadsheetId: string): Promise<{ title: string; rows: string[][] }[]>;
   writeValues(spreadsheetId: string, updates: ValueUpdate[]): Promise<void>;
+  deleteRows(spreadsheetId: string, deletions: RowDeletion[]): Promise<void>;
 };
 
 function nowIso(): string {
@@ -216,6 +220,21 @@ export class FakeDrive implements SheetBackend {
           next[column] = value;
         });
         sheet.rows[rowIndex] = next;
+      }
+    }
+    this.touch(spreadsheetId);
+  }
+
+  async deleteRows(spreadsheetId: string, deletions: RowDeletion[]): Promise<void> {
+    this.guard();
+    const grids = this.grids.get(spreadsheetId);
+    if (!grids) throw new SheetHttpError(404, "Missing spreadsheet");
+    for (const deletion of deletions) {
+      const sheet = grids.find((item) => item.title === deletion.title);
+      if (!sheet) continue;
+      for (const rowNumber of [...new Set(deletion.rows)].sort((a, b) => b - a)) {
+        if (rowNumber < 2 || rowNumber > sheet.rows.length) continue;
+        sheet.rows.splice(rowNumber - 1, 1);
       }
     }
     this.touch(spreadsheetId);
@@ -481,6 +500,27 @@ export class GoogleBackend implements SheetBackend {
       body: JSON.stringify({ valueInputOption: "RAW", data: updates }),
     });
     if (!response.ok) throw new SheetHttpError(response.status, await googleError(response, "Could not write the spreadsheet."));
+  }
+
+  async deleteRows(spreadsheetId: string, deletions: RowDeletion[]): Promise<void> {
+    const wanted = deletions.filter((deletion) => deletion.rows.length > 0);
+    if (wanted.length === 0) return;
+    const meta = await this.spreadsheet(spreadsheetId);
+    const requests: Record<string, unknown>[] = [];
+    for (const deletion of wanted) {
+      const sheetId = meta.sheets?.find((item) => item.properties?.title === deletion.title)?.properties?.sheetId;
+      if (sheetId == null) continue;
+      // Bottom-up, so removing one row never shifts another row in the same batch. Row 1 is the header.
+      for (const rowNumber of [...new Set(deletion.rows)].filter((row) => row >= 2).sort((a, b) => b - a)) {
+        requests.push({ deleteDimension: { range: { sheetId, dimension: "ROWS", startIndex: rowNumber - 1, endIndex: rowNumber } } });
+      }
+    }
+    if (requests.length === 0) return;
+    const response = await this.request(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+      method: "POST",
+      body: JSON.stringify({ requests }),
+    });
+    if (!response.ok) throw new SheetHttpError(response.status, await googleError(response, "Could not remove deleted rows from the spreadsheet."));
   }
 
   private async spreadsheet(id: string): Promise<SpreadsheetMeta> {
