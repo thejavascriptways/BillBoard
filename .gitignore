@@ -49,3 +49,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+BillBoard.app/
+client_secret_*.json
